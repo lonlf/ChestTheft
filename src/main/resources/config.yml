@@ -1,0 +1,13 @@
+
+
+DataBase:
+  type: sqlite #sqlite/mysql
+  #if is MySQL
+  ip: localhost
+  port: 3306
+  database: minecraft
+  user: root
+  password: 123456
+  useSSL: false
+  timeZone: UTC
+  #remember restart have changed it.

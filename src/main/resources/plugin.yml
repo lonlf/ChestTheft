@@ -1,0 +1,9 @@
+name: ChestTheft
+version: '1.0'
+main: com.lonleaf.chestTheft.ChestTheft
+api-version: '1.18'
+authors: [ lonleaf ]
+depend: [NBTAPI]
+softdepend: [MythicMobs,PlaceholderAPI]
+description: 仿RPG箱子盗窃功能
+website: lonleaf.com/wiki/ChestTheft

@@ -1,0 +1,8 @@
+noDataBaseError: 错误！未找到连接中的服务器！
+nowPicking: §a正在撬锁中
+success: §a撬锁成功！
+fail: §c撬锁失败！
+startPicking: §a开始撬锁！
+cancelPicking: §a已取消撬锁！
+rule: §a撬锁开始！当绿色走到红色区域时点击鼠标!
+lockedIt: §a上锁成功
