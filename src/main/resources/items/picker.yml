@@ -1,0 +1,10 @@
+# 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
+# 添加自定义物品：复制一份定义并修改 ID（如 picker002）与 name/material 等即可
+picker001:
+  type: picker
+  name: "Example picker"
+  material: FISHING_ROD
+  customModelData: 13086
+  lore:
+    - "This is a example picker001"
+    - "Use this to picklock a locked chest."

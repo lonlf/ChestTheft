@@ -1,8 +1,7 @@
-
-
+# 语言设置: zh_cn / en_gb（首次生成配置时按服务器地区自动填充，可手动修改）
 DataBase:
-  type: sqlite #sqlite/mysql
-  #if is MySQL
+  type: sqlite # sqlite / mysql
+  # 以下为 MySQL 连接参数（type: mysql 时生效）
   ip: localhost
   port: 3306
   database: minecraft
@@ -10,4 +9,29 @@ DataBase:
   password: 123456
   useSSL: false
   timeZone: UTC
-  #remember restart have changed it.
+
+# 撬锁小游戏参数
+Game:
+  bar-length: 15     # 进度条总格数
+  red-length: 3      # 红色区域长度
+  move-interval: 10  # 光标移动间隔（tick，20 tick = 1 秒）
+  timeout: 15        # 超时时间（秒）
+  cooldown: 3        # 撬锁结束后的冷却时间（秒）
+
+# 钥匙功能
+Key:
+  # 是否启用钥匙卸锁功能（已配对钥匙 + 交互按键，卸下锁并返还锁物品；卸锁必须手持钥匙）
+  unlock-enabled: true
+  # 是否启用钥匙配对功能（未配对钥匙 + 交互按键，由上锁者为钥匙配对）
+  pair-enabled: true
+  # 交互按键动作: LEFT / RIGHT
+  interaction-action: LEFT
+  # 交互按键是否必须潜行
+  interaction-sneak: true
+  # 打开上锁箱子是否必须手持钥匙；false 时背包中有钥匙即可
+  require-in-hand: true
+
+# 物品配置见 items/ 文件夹下各自的独立文件（lock.yml / key.yml / picker.yml）
+
+# 是否输出调试日志
+Debug: false

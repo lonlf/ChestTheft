@@ -1,0 +1,66 @@
+package com.lonleaf.chesttheft.command;
+
+import com.lonleaf.chesttheft.ChestTheft;
+import com.lonleaf.chesttheft.command.commands.CheckCommand;
+import com.lonleaf.chesttheft.command.commands.Command;
+import com.lonleaf.chesttheft.command.commands.GiveCommand;
+import com.lonleaf.chesttheft.command.commands.ReloadCommand;
+import com.lonleaf.chesttheft.command.commands.SetItemCommand;
+import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.config.PluginConfig;
+import com.lonleaf.chesttheft.item.ItemConfigManager;
+import com.lonleaf.chesttheft.item.ItemManager;
+import com.lonleaf.chesttheft.item.ItemTagger;
+import org.bukkit.command.PluginCommand;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class CommandManager {
+    private final ChestTheft plugin;
+    private final Command giveCommand;
+    private final Command setItemCommand;
+    private final Command checkCommand;
+    private final Command reloadCommand;
+
+    public CommandManager(ChestTheft plugin, ItemManager itemManager, ItemTagger itemTagger,
+                          ItemConfigManager itemConfigManager, PluginConfig config) {
+        this.plugin = plugin;
+        this.giveCommand = new GiveCommand(itemManager, itemConfigManager);
+        this.setItemCommand = new SetItemCommand(itemTagger, itemConfigManager);
+        this.checkCommand = new CheckCommand(itemManager);
+        this.reloadCommand = new ReloadCommand(config, itemConfigManager);
+        registerCommands();
+    }
+
+    public void registerCommands() {
+        PluginCommand chestTheftCommand = plugin.getCommand("chesttheft");
+        if (chestTheftCommand != null) {
+            chestTheftCommand.setAliases(List.of("ct"));
+            chestTheftCommand.setExecutor((sender, command, label, args) -> {
+                if (args.length == 0) {
+                    sender.sendMessage(Messages.get(Messages.USAGE));
+                    return true;
+                }
+                List<Boolean> result = new ArrayList<>();
+                result.add(giveCommand.execute(sender, args));
+                result.add(setItemCommand.execute(sender, args));
+                result.add(checkCommand.execute(sender, args));
+                result.add(reloadCommand.execute(sender, args));
+                return result.contains(Boolean.TRUE);
+            });
+            chestTheftCommand.setTabCompleter((sender, command, label, args) -> {
+                if (args.length == 0) {
+                    return List.of("give", "setitem", "check", "reload");
+                }
+                return switch (args[0]) {
+                    case "give" -> giveCommand.completeList(args);
+                    case "setitem" -> setItemCommand.completeList(args);
+                    case "check" -> checkCommand.completeList(args);
+                    case "reload" -> reloadCommand.completeList(args);
+                    default -> List.of("give", "setitem", "check", "reload");
+                };
+            });
+        }
+    }
+}

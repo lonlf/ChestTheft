@@ -1,9 +1,18 @@
 name: ChestTheft
-version: '1.0'
-main: com.lonleaf.chestTheft.ChestTheft
+version: '2.0'
+main: com.lonleaf.chesttheft.ChestTheft
 api-version: '1.18'
 authors: [ lonleaf ]
-depend: [NBTAPI]
-softdepend: [MythicMobs,PlaceholderAPI]
+softdepend: [ MythicMobs, PlaceholderAPI ]
 description: 仿RPG箱子盗窃功能
-website: lonleaf.com/wiki/ChestTheft
+website: https://github.com/lonlf
+commands:
+  chesttheft:
+    description: ChestTheft 主命令
+    usage: /chesttheft give <玩家> <物品ID> [数量] | /chesttheft setitem <物品ID> | /chesttheft check | /chesttheft reload
+permissions:
+  chesttheft.admin:
+    default: op
+  chesttheft.use:
+    description: allow to pickup
+    default: true

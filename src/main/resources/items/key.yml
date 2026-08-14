@@ -1,0 +1,8 @@
+key001:
+  type: key
+  name: "Example key"
+  material: GOLD_NUGGET
+  customModelData: 13087
+  lore:
+    - "This is a example key001"
+    - "Use this to open or unlock chest."
