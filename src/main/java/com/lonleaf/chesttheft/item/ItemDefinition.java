@@ -9,9 +9,6 @@ import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * 特殊物品定义：由 items 文件夹下的配置文件按物品ID解析而来，描述某个特殊物品的完整外观。
- */
 public class ItemDefinition {
     private final String id;
     private final ItemType type;

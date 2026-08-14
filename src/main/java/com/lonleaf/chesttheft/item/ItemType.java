@@ -4,9 +4,6 @@ import org.bukkit.Material;
 
 import java.util.Locale;
 
-/**
- * 物品类型枚举，对应物品 PDC 中的标识标签。
- */
 public enum ItemType {
     LOCK("lock", Material.IRON_INGOT),
     KEY("key", Material.GOLD_NUGGET),

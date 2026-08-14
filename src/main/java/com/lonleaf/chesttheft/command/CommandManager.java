@@ -36,10 +36,9 @@ public class CommandManager {
     public void registerCommands() {
         PluginCommand chestTheftCommand = plugin.getCommand("chesttheft");
         if (chestTheftCommand != null) {
-            chestTheftCommand.setAliases(List.of("ct"));
             chestTheftCommand.setExecutor((sender, command, label, args) -> {
                 if (args.length == 0) {
-                    sender.sendMessage(Messages.get(Messages.USAGE));
+                    Messages.send(sender, Messages.USAGE, Messages.USAGE_FORMAT);
                     return true;
                 }
                 List<Boolean> result = new ArrayList<>();

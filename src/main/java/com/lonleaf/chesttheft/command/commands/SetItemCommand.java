@@ -11,9 +11,6 @@ import org.bukkit.inventory.ItemStack;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * setitem 子命令：将玩家手中的物品写入持久化标签，设置为指定 ID 的特殊物品。
- */
 public class SetItemCommand implements Command {
     private final ItemTagger tagger;
     private final ItemConfigManager configManager;
@@ -29,29 +26,29 @@ public class SetItemCommand implements Command {
             return false;
         }
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(Messages.get(Messages.PLAYER_ONLY));
+            Messages.send(sender, Messages.PLAYER_ONLY, Messages.PLAYER_ONLY_FORMAT);
             return true;
         }
         if (!player.hasPermission("chesttheft.admin")) {
-            player.sendMessage(Messages.get(Messages.NO_PERMISSION));
+            Messages.send(player, Messages.NO_PERMISSION, Messages.NO_PERMISSION_FORMAT);
             return true;
         }
         if (args.length < 2) {
-            player.sendMessage(Messages.get(Messages.USAGE));
+            Messages.send(player, Messages.USAGE, Messages.USAGE_FORMAT);
             return true;
         }
         ItemDefinition def = configManager.getDefinition(args[1]);
         if (def == null) {
-            player.sendMessage(Messages.get(Messages.INVALID_ID, args[1]));
+            Messages.send(player, Messages.INVALID_ID, Messages.INVALID_ID_FORMAT, args[1]);
             return true;
         }
         ItemStack hand = player.getInventory().getItemInMainHand();
         if (hand == null || hand.getType().isAir()) {
-            player.sendMessage(Messages.get(Messages.SETITEM_NO_ITEM));
+            Messages.send(player, Messages.SETITEM_NO_ITEM, Messages.SETITEM_NO_ITEM_FORMAT);
             return true;
         }
         tagger.tag(hand, def.getId());
-        player.sendMessage(Messages.get(Messages.SETITEM_SUCCESS, def.getId()));
+        Messages.send(player, Messages.SETITEM_SUCCESS, Messages.SETITEM_SUCCESS_FORMAT, def.getId());
         return true;
     }
 

@@ -27,21 +27,21 @@ public class GiveCommand implements Command {
             return false;
         }
         if (!sender.hasPermission("chesttheft.admin")) {
-            sender.sendMessage(Messages.get(Messages.NO_PERMISSION));
+            Messages.send(sender, Messages.NO_PERMISSION, Messages.NO_PERMISSION_FORMAT);
             return true;
         }
         if (args.length < 3) {
-            sender.sendMessage(Messages.get(Messages.USAGE));
+            Messages.send(sender, Messages.USAGE, Messages.USAGE_FORMAT);
             return true;
         }
         Player target = Bukkit.getPlayer(args[1]);
         if (target == null) {
-            sender.sendMessage(Messages.get(Messages.PLAYER_NOT_FOUND));
+            Messages.send(sender, Messages.PLAYER_NOT_FOUND, Messages.PLAYER_NOT_FOUND_FORMAT);
             return true;
         }
         ItemDefinition def = configManager.getDefinition(args[2]);
         if (def == null) {
-            sender.sendMessage(Messages.get(Messages.INVALID_ID, args[2]));
+            Messages.send(sender, Messages.INVALID_ID, Messages.INVALID_ID_FORMAT, args[2]);
             return true;
         }
         int amount = 1;
@@ -49,7 +49,7 @@ public class GiveCommand implements Command {
             try {
                 amount = Math.max(1, Integer.parseInt(args[3]));
             } catch (NumberFormatException e) {
-                sender.sendMessage(Messages.get(Messages.INVALID_AMOUNT));
+                Messages.send(sender, Messages.INVALID_AMOUNT, Messages.INVALID_AMOUNT_FORMAT);
                 return true;
             }
         }
@@ -58,7 +58,7 @@ public class GiveCommand implements Command {
             return true;
         }
         target.getInventory().addItem(item);
-        sender.sendMessage(Messages.get(Messages.GIVEN_ITEM, amount, def.getId(), target.getName()));
+        Messages.send(sender, Messages.GIVEN_ITEM, Messages.GIVEN_ITEM_FORMAT, amount, def.getId(), target.getName());
         return true;
     }
 

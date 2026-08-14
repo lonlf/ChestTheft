@@ -6,17 +6,15 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
-/**
- * 特殊物品持久化标签模块：独立负责将物品写入持久化存储（PDC），
- * 以物品ID标识特殊物品（key / lock / picker），并负责钥匙与锁的配对记录。
- */
 public class ItemTagger {
     private final NamespacedKey idKey;
     private final NamespacedKey lockKey;
+    private final NamespacedKey tokenKey;
 
-    public ItemTagger(NamespacedKey idKey, NamespacedKey lockKey) {
+    public ItemTagger(NamespacedKey idKey, NamespacedKey lockKey, NamespacedKey tokenKey) {
         this.idKey = idKey;
         this.lockKey = lockKey;
+        this.tokenKey = tokenKey;
     }
 
     /** 将物品写入持久化存储，标记为指定 ID 的特殊物品。 */
@@ -40,13 +38,28 @@ public class ItemTagger {
         return meta.getPersistentDataContainer().get(idKey, PersistentDataType.STRING);
     }
 
-    /** 将钥匙与锁配对：把锁的位置写入钥匙的持久化存储。 */
-    public void setPairedLock(ItemStack item, BlockLocation location) {
+    /** 将钥匙与锁配对：把锁的位置与锁凭证写入钥匙的持久化存储。 */
+    public void setPairedLock(ItemStack item, BlockLocation location, String token) {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.getPersistentDataContainer().set(lockKey, PersistentDataType.STRING, location.toString());
+            if (token != null) {
+                meta.getPersistentDataContainer().set(tokenKey, PersistentDataType.STRING, token);
+            }
             item.setItemMeta(meta);
         }
+    }
+
+    /** 读取钥匙配对的锁凭证，旧钥匙或无凭证返回 null。 */
+    public String getPairedToken(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) {
+            return null;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return null;
+        }
+        return meta.getPersistentDataContainer().get(tokenKey, PersistentDataType.STRING);
     }
 
     /** 读取钥匙配对的锁位置，未配对返回 null。 */

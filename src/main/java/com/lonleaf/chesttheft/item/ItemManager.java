@@ -7,10 +7,6 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.stream.Collectors;
 
-/**
- * 物品管理：按物品定义构建特殊物品 ItemStack，以物品 ID 进行持久化标识与识别。
- * 配置加载由 ItemConfigManager 负责，持久化标签由 ItemTagger 负责。
- */
 public class ItemManager {
     private final ItemTagger tagger;
     private final ItemConfigManager configManager;
@@ -84,9 +80,14 @@ public class ItemManager {
         }
     }
 
-    /** 将钥匙与锁配对：把锁的位置写入钥匙的持久化存储。 */
-    public void setPairedLock(ItemStack item, BlockLocation location) {
-        tagger.setPairedLock(item, location);
+    /** 将钥匙与锁配对：把锁的位置与锁凭证写入钥匙的持久化存储。 */
+    public void setPairedLock(ItemStack item, BlockLocation location, String token) {
+        tagger.setPairedLock(item, location, token);
+    }
+
+    /** 读取钥匙配对的锁凭证，旧钥匙或无凭证返回 null。 */
+    public String getPairedToken(ItemStack item) {
+        return tagger.getPairedToken(item);
     }
 
     /** 读取钥匙配对的锁位置，未配对返回 null。 */

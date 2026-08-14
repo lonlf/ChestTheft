@@ -1,5 +1,11 @@
-# 语言设置: zh_cn / en_gb（首次生成配置时按服务器地区自动填充，可手动修改）
-DataBase:
+# 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
+config-version: 1
+# 是否输出调试日志
+debug: false
+# 语言设置: zh_cn / en_gb（首次启动时按服务器地区自动检测填充，可手动修改）
+language: "en_gb"
+# 数据库设置
+database:
   type: sqlite # sqlite / mysql
   # 以下为 MySQL 连接参数（type: mysql 时生效）
   ip: localhost
@@ -7,11 +13,11 @@ DataBase:
   database: minecraft
   user: root
   password: 123456
-  useSSL: false
-  timeZone: UTC
+  usessl: false
+  timezone: UTC
 
 # 撬锁小游戏参数
-Game:
+game:
   bar-length: 15     # 进度条总格数
   red-length: 3      # 红色区域长度
   move-interval: 10  # 光标移动间隔（tick，20 tick = 1 秒）
@@ -19,7 +25,7 @@ Game:
   cooldown: 3        # 撬锁结束后的冷却时间（秒）
 
 # 钥匙功能
-Key:
+key:
   # 是否启用钥匙卸锁功能（已配对钥匙 + 交互按键，卸下锁并返还锁物品；卸锁必须手持钥匙）
   unlock-enabled: true
   # 是否启用钥匙配对功能（未配对钥匙 + 交互按键，由上锁者为钥匙配对）
@@ -31,7 +37,29 @@ Key:
   # 打开上锁箱子是否必须手持钥匙；false 时背包中有钥匙即可
   require-in-hand: true
 
-# 物品配置见 items/ 文件夹下各自的独立文件（lock.yml / key.yml / picker.yml）
-
-# 是否输出调试日志
-Debug: false
+# 各交互消息显示方式: message（聊天）/ actionbar（动作栏）/ title（标题）
+message-format:
+  pickingSuccess: title   # 撬锁成功
+  pickingFail: title      # 撬锁失败
+  pickingStart: title     # 开始撬锁
+  pickingCancel: title    # 取消撬锁
+  pickingRule: subtitle    # 撬锁规则提示
+  pickingTimeout: subtitle   # 撬锁超时
+  pickingCooldown: subtitle  # 撬锁冷却
+  lockSuccess: title        # 上锁成功
+  chestLocked: message      # 箱子已上锁
+  unlockSuccess: message    # 卸锁成功
+  unlockConfirm: message    # 卸锁确认
+  pairSuccess: message      # 配对成功
+  pairNotLocker: message    # 无法配对
+  keyNotMatched: message    # 钥匙不匹配
+  keyChanged: message       # 钥匙已更换
+  noPermission: message     # 无权限
+  playerOnly: message       # 仅玩家可用
+  playerNotFound: message   # 玩家不在线
+  invalidId: message        # 无效物品ID
+  invalidAmount: message    # 无效数量
+  giveSuccess: message      # 给予物品
+  setItemSuccess: message   # 设置物品成功
+  setItemNoItem: message    # 未手持物品
+  checkNotSpecial: message  # 非特殊物品

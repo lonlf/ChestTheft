@@ -38,6 +38,8 @@ public abstract class AbstractDatabase implements Database {
                 + "z INT NOT NULL,"
                 + "lock_item TEXT NOT NULL DEFAULT '',"
                 + "locker_uuid VARCHAR(36) NOT NULL DEFAULT '',"
+                + "lock_token VARCHAR(36) NOT NULL DEFAULT '',"
+                + "paired_count INT NOT NULL DEFAULT 0,"
                 + "UNIQUE(world, x, y, z)"
                 + ")";
         try (Statement stmt = connection.createStatement()) {
@@ -93,8 +95,8 @@ public abstract class AbstractDatabase implements Database {
     }
 
     @Override
-    public void lock(BlockLocation location, ItemStack lockItem, String lockerUuid) {
-        String sql = "INSERT INTO " + TABLE + " (world, x, y, z, lock_item, locker_uuid) VALUES (?, ?, ?, ?, ?, ?)";
+    public void lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token) {
+        String sql = "INSERT INTO " + TABLE + " (world, x, y, z, lock_item, locker_uuid, lock_token) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
@@ -102,11 +104,32 @@ public abstract class AbstractDatabase implements Database {
             ps.setInt(4, location.getZ());
             ps.setString(5, serializeItem(lockItem));
             ps.setString(6, lockerUuid);
+            ps.setString(7, token);
             ps.executeUpdate();
         } catch (SQLException e) {
             // UNIQUE 约束冲突说明已上锁，属正常情况
             if (debug) logger.log(Level.INFO, Messages.getLog(Messages.LOG_DB_LOCK_DUP, location), e);
         }
+    }
+
+    @Override
+    public String getLockToken(BlockLocation location) {
+        String sql = "SELECT lock_token FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, location.getWorld());
+            ps.setInt(2, location.getX());
+            ps.setInt(3, location.getY());
+            ps.setInt(4, location.getZ());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String token = rs.getString("lock_token");
+                    return token == null || token.isEmpty() ? null : token;
+                }
+            }
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
+        }
+        return null;
     }
 
     @Override
@@ -127,6 +150,37 @@ public abstract class AbstractDatabase implements Database {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_LOCKER_FAIL, location), e);
         }
         return null;
+    }
+
+    @Override
+    public boolean hasPairedKey(BlockLocation location) {
+        String sql = "SELECT paired_count FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, location.getWorld());
+            ps.setInt(2, location.getX());
+            ps.setInt(3, location.getY());
+            ps.setInt(4, location.getZ());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() && rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
+        }
+        return false;
+    }
+
+    @Override
+    public void increasePairedCount(BlockLocation location) {
+        String sql = "UPDATE " + TABLE + " SET paired_count = paired_count + 1 WHERE world = ? AND x = ? AND y = ? AND z = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, location.getWorld());
+            ps.setInt(2, location.getX());
+            ps.setInt(3, location.getY());
+            ps.setInt(4, location.getZ());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
+        }
     }
 
     @Override

@@ -38,7 +38,7 @@ public class GameSession {
     }
 
     public void start() {
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(Messages.get(Messages.RULE)));
+        Messages.send(player, Messages.RULE, Messages.RULE_FORMAT);
         task = gameManager.getPlugin().getServer().getScheduler().runTaskTimer(
                 gameManager.getPlugin(),
                 this::update,
@@ -49,7 +49,7 @@ public class GameSession {
 
     private void update() {
         if (++elapsedTicks >= config.getTimeoutTicks()) {
-            player.sendMessage(Messages.get(Messages.GAME_TIMEOUT));
+            Messages.send(player, Messages.GAME_TIMEOUT, Messages.GAME_TIMEOUT_FORMAT);
             gameManager.endGame(player);
             return;
         }

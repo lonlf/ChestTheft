@@ -6,9 +6,6 @@ import org.bukkit.block.Block;
 
 import java.util.Objects;
 
-/**
- * 上锁方块位置值对象，使用方块坐标（世界名 + blockX/Y/Z）表示。
- */
 public final class BlockLocation {
     private final String world;
     private final int x;

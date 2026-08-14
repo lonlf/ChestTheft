@@ -80,6 +80,11 @@
             <version>26.7.4</version> <!-- 例如 0.0.60 -->
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-spigot</artifactId>
+            <version>2.13.0</version>
+        </dependency>
         <!-- MySQL 驱动，打包时随插件发布 -->
         <dependency>
             <groupId>com.mysql</groupId>

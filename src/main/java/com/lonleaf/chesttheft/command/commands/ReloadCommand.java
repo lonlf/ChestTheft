@@ -7,9 +7,6 @@ import org.bukkit.command.CommandSender;
 
 import java.util.List;
 
-/**
- * reload 子命令：重载插件配置、物品配置与语言文件。
- */
 public class ReloadCommand implements Command {
     private final PluginConfig config;
     private final ItemConfigManager itemConfigManager;
@@ -25,14 +22,15 @@ public class ReloadCommand implements Command {
             return false;
         }
         if (!sender.hasPermission("chesttheft.admin")) {
-            sender.sendMessage(Messages.get(Messages.NO_PERMISSION));
+            Messages.send(sender, Messages.NO_PERMISSION, Messages.NO_PERMISSION_FORMAT);
             return true;
         }
 
         config.reload();
         itemConfigManager.reload();
         Messages.reload(config.getLanguage());
-        sender.sendMessage(Messages.get(Messages.RELOADED));
+        Messages.applyFormats(config.getMessageFormats());
+        Messages.send(sender, Messages.RELOADED, Messages.RELOADED_FORMAT);
         return true;
     }
 

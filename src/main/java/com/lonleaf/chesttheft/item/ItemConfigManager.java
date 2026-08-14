@@ -13,10 +13,6 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * 物品配置管理：加载 items 文件夹下所有配置文件，每个文件可含多个物品，
- * 以物品 ID 为键统一导入，便于用户添加自定义物品。
- */
 public class ItemConfigManager {
     private final ChestTheft plugin;
     private final Map<String, ItemDefinition> definitions = new LinkedHashMap<>();
@@ -30,9 +26,12 @@ public class ItemConfigManager {
     public void reload() {
         definitions.clear();
         defaultIds.clear();
-        // 复制内置默认物品配置（缺失时）
+        // 复制内置默认物品配置（仅在文件缺失时复制，避免 saveResource 对已存在文件输出警告）
         for (ItemType type : ItemType.values()) {
-            plugin.saveResource("items/" + type.getConfigKey() + ".yml", false);
+            File target = new File(plugin.getDataFolder(), "items/" + type.getConfigKey() + ".yml");
+            if (!target.exists()) {
+                plugin.saveResource("items/" + type.getConfigKey() + ".yml", false);
+            }
         }
         File itemsDir = new File(plugin.getDataFolder(), "items");
         File[] files = itemsDir.listFiles((dir, name) -> name.endsWith(".yml"));

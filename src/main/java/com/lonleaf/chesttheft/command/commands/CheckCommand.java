@@ -3,6 +3,7 @@ package com.lonleaf.chesttheft.command.commands;
 import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.item.ItemManager;
 import com.lonleaf.chesttheft.item.ItemType;
+import com.lonleaf.chesttheft.model.BlockLocation;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -10,9 +11,6 @@ import org.bukkit.inventory.ItemStack;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * check 子命令：检查玩家手中物品的特殊类型（key / lock / picker）。
- */
 public class CheckCommand implements Command {
     private final ItemManager itemManager;
 
@@ -26,19 +24,29 @@ public class CheckCommand implements Command {
             return false;
         }
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(Messages.get(Messages.PLAYER_ONLY));
+            Messages.send(sender, Messages.PLAYER_ONLY, Messages.PLAYER_ONLY_FORMAT);
             return true;
         }
         ItemStack hand = player.getInventory().getItemInMainHand();
         if (hand == null || hand.getType().isAir()) {
-            player.sendMessage(Messages.get(Messages.SETITEM_NO_ITEM));
+            Messages.send(player, Messages.SETITEM_NO_ITEM, Messages.SETITEM_NO_ITEM_FORMAT);
             return true;
         }
         ItemType type = itemManager.getType(hand);
         if (type == null) {
-            player.sendMessage(Messages.get(Messages.CHECK_NOT_SPECIAL));
+            Messages.send(player, Messages.CHECK_NOT_SPECIAL, Messages.CHECK_NOT_SPECIAL_FORMAT);
         } else {
-            player.sendMessage(Messages.get(Messages.CHECK_TYPE, type.name().toLowerCase(Locale.ROOT)));
+            Messages.send(player, Messages.CHECK_PDC, Messages.CHECK_PDC_FORMAT,
+                    itemManager.getId(hand),
+                    type.name().toLowerCase(Locale.ROOT));
+            // 只有钥匙需要显示配对锁与锁凭证
+            if (type == ItemType.KEY) {
+                BlockLocation paired = itemManager.getPairedLock(hand);
+                String token = itemManager.getPairedToken(hand);
+                Messages.send(player, Messages.CHECK_KEY_INFO, Messages.CHECK_KEY_INFO_FORMAT,
+                        paired == null ? Messages.NONE : paired.toString(),
+                        token == null ? Messages.NONE : token);
+            }
         }
         return true;
     }

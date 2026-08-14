@@ -9,9 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * 游戏管理器：维护撬锁会话生命周期与冷却时间。
- */
 public class GameManager {
     private final JavaPlugin plugin;
     private final PluginConfig config;
@@ -35,7 +32,7 @@ public class GameManager {
         if (lastEnd != null) {
             long remaining = (lastEnd + config.getCooldownSeconds() * 1000L - now) / 1000L + 1;
             if (remaining > 0) {
-                player.sendMessage(Messages.get(Messages.COOLDOWN, remaining));
+                Messages.send(player, Messages.COOLDOWN, Messages.COOLDOWN_FORMAT, remaining);
                 return false;
             }
         }
