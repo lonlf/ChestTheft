@@ -17,7 +17,6 @@ public class ItemTagger {
         this.tokenKey = tokenKey;
     }
 
-    /** 将物品写入持久化存储，标记为指定 ID 的特殊物品。 */
     public void tag(ItemStack item, String id) {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
@@ -38,7 +37,6 @@ public class ItemTagger {
         return meta.getPersistentDataContainer().get(idKey, PersistentDataType.STRING);
     }
 
-    /** 将钥匙与锁配对：把锁的位置与锁凭证写入钥匙的持久化存储。 */
     public void setPairedLock(ItemStack item, BlockLocation location, String token) {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
@@ -75,7 +73,6 @@ public class ItemTagger {
         return data == null ? null : BlockLocation.parse(data);
     }
 
-    /** 钥匙是否与该锁配对。 */
     public boolean isPairedTo(ItemStack item, BlockLocation location) {
         BlockLocation paired = getPairedLock(item);
         return paired != null && paired.equals(location);

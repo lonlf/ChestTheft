@@ -27,10 +27,8 @@ public class Messages {
 
     private static final Logger LOGGER = Logger.getLogger(Messages.class.getName());
 
-    /** 当前语言代码 */
     private static volatile String currentLang = "en_gb";
 
-    /** 语言文件目录 */
     private static Path langDir;
 
     /** 默认资源路径前缀（打包在 JAR 中的内置语言文件） */
@@ -95,7 +93,6 @@ public class Messages {
     public static volatile String FAIL_FORMAT;
     public static volatile String START_PICKING_FORMAT;
     public static volatile String CANCEL_PICKING_FORMAT;
-    public static volatile String RULE_FORMAT;
     public static volatile String LOCKED_IT_FORMAT;
     public static volatile String CHEST_LOCKED_FORMAT;
     public static volatile String GAME_TIMEOUT_FORMAT;
@@ -144,6 +141,13 @@ public class Messages {
     public static volatile String LOG_CONFIG_UPGRADE_DONE;
     public static volatile String LOG_LANG_WRITE_FAIL;
     public static volatile String LOG_CONFIG_LOADED_DEBUG;
+    public static volatile String LOG_CONFIG_KEEP_PREVIOUS;
+    public static volatile String LOG_LOCK_LEVEL_INVALID;
+    public static volatile String LOG_LOCK_LEVEL_DUPLICATE;
+    public static volatile String LOG_LOCK_LEVEL_FALLBACK;
+    public static volatile String LOG_LOCK_LEVEL_FALLBACK_DEFAULT;
+    public static volatile String LOG_LOCK_APPLIED;
+    public static volatile String LOG_PICKLOCK_START_DEBUG;
 
     // ==================== 初始化 ====================
 
@@ -242,7 +246,6 @@ public class Messages {
         FAIL_FORMAT = formats.getOrDefault("pickingFail", "message");
         START_PICKING_FORMAT = formats.getOrDefault("pickingStart", "message");
         CANCEL_PICKING_FORMAT = formats.getOrDefault("pickingCancel", "message");
-        RULE_FORMAT = formats.getOrDefault("pickingRule", "actionbar");
         LOCKED_IT_FORMAT = formats.getOrDefault("lockSuccess", "title");
         CHEST_LOCKED_FORMAT = formats.getOrDefault("chestLocked", "message");
         GAME_TIMEOUT_FORMAT = formats.getOrDefault("pickingTimeout", "message");
@@ -441,7 +444,6 @@ public class Messages {
         return value;
     }
 
-    /** 替换 {0}, {1} 等占位符。 */
     private static String format(String text, Object... args) {
         for (int i = 0; i < args.length; i++) {
             text = text.replace("{" + i + "}", String.valueOf(args[i]));
@@ -517,6 +519,13 @@ public class Messages {
         LOG_CONFIG_UPGRADE_DONE = messages.getOrDefault("logConfigUpgradeDone", "Config upgraded: {0} new options added (v{1})");
         LOG_LANG_WRITE_FAIL = messages.getOrDefault("logLangWriteFail", "Failed to write language {0} to config: {1}");
         LOG_CONFIG_LOADED_DEBUG = messages.getOrDefault("logConfigLoadedDebug", "Config loaded: db={0} debug={1} lang={2}");
+        LOG_CONFIG_KEEP_PREVIOUS = messages.getOrDefault("logConfigKeepPrevious", "Config load failure, keeping previous config");
+        LOG_LOCK_LEVEL_INVALID = messages.getOrDefault("logLockLevelInvalid", "Ignoring invalid lock level key '{0}' (expected a number) in {1}");
+        LOG_LOCK_LEVEL_DUPLICATE = messages.getOrDefault("logLockLevelDuplicate", "Duplicate lock level '{0}' overridden by definition in {1}");
+        LOG_LOCK_LEVEL_FALLBACK = messages.getOrDefault("logLockLevelFallback", "Lock level {0} not configured, using fallback level {1}");
+        LOG_LOCK_LEVEL_FALLBACK_DEFAULT = messages.getOrDefault("logLockLevelFallbackDefault", "Lock level {0} not configured and no available level, using default config");
+        LOG_LOCK_APPLIED = messages.getOrDefault("logLockApplied", "Player {0} locked {1} (level {2})");
+        LOG_PICKLOCK_START_DEBUG = messages.getOrDefault("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
     }
 
     /**
@@ -592,6 +601,13 @@ public class Messages {
             map.put("logConfigUpgradeDone", "配置已升级: 新增 {0} 个配置项 (v{1})");
             map.put("logLangWriteFail", "写入语言 {0} 到配置失败: {1}");
             map.put("logConfigLoadedDebug", "配置已加载: db={0} debug={1} lang={2}");
+            map.put("logConfigKeepPrevious", "配置加载失败，保留上一次的配置");
+            map.put("logLockLevelInvalid", "忽略无效的锁等级键 '{0}'（应为数字）in {1}");
+            map.put("logLockLevelDuplicate", "重复的锁等级 '{0}'，被 {1} 中的定义覆盖");
+            map.put("logLockLevelFallback", "锁等级 {0} 未配置，已回退使用可用等级 {1}");
+            map.put("logLockLevelFallbackDefault", "锁等级 {0} 未配置且无可用等级，已回退使用默认配置");
+            map.put("logLockApplied", "玩家 {0} 已上锁 {1}（等级 {2}）");
+            map.put("logPicklockStartDebug", "玩家 {0} 开始撬锁 {1}（锁等级 {2}，撬锁器等级 {3}，生效等级 {4}）");
         } else {
             map.put("success", "&aPicklock successful!");
             map.put("fail", "&cPicklock failed!");
@@ -650,6 +666,13 @@ public class Messages {
             map.put("logConfigUpgradeDone", "Config upgraded: {0} new options added (v{1})");
             map.put("logLangWriteFail", "Failed to write language {0} to config: {1}");
             map.put("logConfigLoadedDebug", "Config loaded: db={0} debug={1} lang={2}");
+            map.put("logConfigKeepPrevious", "Config load failure, keeping previous config");
+            map.put("logLockLevelInvalid", "Ignoring invalid lock level key '{0}' (expected a number) in {1}");
+            map.put("logLockLevelDuplicate", "Duplicate lock level '{0}' overridden by definition in {1}");
+            map.put("logLockLevelFallback", "Lock level {0} not configured, using fallback level {1}");
+            map.put("logLockLevelFallbackDefault", "Lock level {0} not configured and no available level, using default config");
+            map.put("logLockApplied", "Player {0} locked {1} (level {2})");
+            map.put("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
         }
         return map;
     }

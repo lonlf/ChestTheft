@@ -1,5 +1,7 @@
 package com.lonleaf.chesttheft.listener;
 
+import com.lonleaf.chesttheft.config.GameConfig;
+import com.lonleaf.chesttheft.config.LockConfigManager;
 import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.minigame.GameManager;
@@ -28,22 +30,32 @@ public class ChestListener implements Listener {
     private final GameManager gameManager;
     private final ItemManager itemManager;
     private final PluginConfig config;
+    /** 不同等级锁的小游戏配置（lock/lock.yml），撬锁时按锁等级取对应配置。 */
+    private final LockConfigManager lockConfigManager;
     /** 卸锁确认状态：玩家待确认的卸锁目标（位置 + 时间戳），需交互两次才真正卸锁。 */
     private final Map<UUID, UnlockConfirm> pendingUnlock = new HashMap<>();
     /** 卸锁确认窗口（毫秒），超时后需重新发起确认。 */
     private static final long UNLOCK_CONFIRM_TIMEOUT_MS = 5000L;
 
     public ChestListener(ChestService chestService, GameManager gameManager,
-                         ItemManager itemManager, PluginConfig config) {
+                         ItemManager itemManager, PluginConfig config, LockConfigManager lockConfigManager) {
         this.chestService = chestService;
         this.gameManager = gameManager;
         this.itemManager = itemManager;
         this.config = config;
+        this.lockConfigManager = lockConfigManager;
     }
 
     @EventHandler
     public void onChestClick(PlayerInteractEvent event) {
         Player player = event.getPlayer();
+
+        // 撬锁游戏中：任意左右键点击（方块 / 空气）即进行成功或失败判定，不再限定点击上锁箱子
+        if (gameManager.isPlaying(player)) {
+            handleGameClick(event, player);
+            return;
+        }
+
         ItemStack item = event.getItem();
         Block block = event.getClickedBlock();
         if (block == null) {
@@ -52,16 +64,23 @@ public class ChestListener implements Listener {
 
         if (chestService.isLocked(block)) {
             BlockLocation location = BlockLocation.from(block);
+            // 撬锁成功后的授权：有效期内该玩家可直接打开箱子（左键等仍拦截，避免误破坏方块）
+            if (gameManager.hasAccess(player, location)) {
+                if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+                    event.setCancelled(false);
+                    // 一次性授权在打开后消耗；限时授权不受影响
+                    gameManager.consumeOnceAccess(player, location);
+                } else {
+                    event.setCancelled(true);
+                }
+                return;
+            }
             ItemType handType = item == null ? null : itemManager.getType(item);
             if (handType == ItemType.PICKER) {
                 if (event.getAction() != Action.RIGHT_CLICK_BLOCK || block.getType() != Material.CHEST) {
                     return;
                 }
-                if (gameManager.isPlaying(player)) {
-                    handleGameClick(event, player);
-                } else {
-                    startNewGame(event, player);
-                }
+                startNewGame(event, player);
             } else if (handType == ItemType.KEY) {
                 if (isKeyInteractionPress(event, player)) {
                     // 交互按键：未配对钥匙由上锁者配对；已配对钥匙卸下锁
@@ -86,9 +105,15 @@ public class ChestListener implements Listener {
                 Messages.send(player, Messages.CHEST_LOCKED, Messages.CHEST_LOCKED_FORMAT);
             }
         } else if (item != null && itemManager.isType(item, ItemType.LOCK)) {
-            chestService.lock(block, item, player.getUniqueId().toString());
+            int level = itemManager.getLevel(item);
+            chestService.lock(block, item, player.getUniqueId().toString(), level);
             event.setCancelled(true);
             Messages.send(player, Messages.LOCKED_IT, Messages.LOCKED_IT_FORMAT);
+            // 锁等级未配置（撬锁时会降级回退）时恒输出日志便于排查配置问题；等级已配置时仅 debug 输出
+            if (!lockConfigManager.isLevelConfigured(level) || config.isDebug()) {
+                gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_LOCK_APPLIED,
+                        player.getName(), BlockLocation.from(block), level));
+            }
         }
     }
 
@@ -216,8 +241,14 @@ public class ChestListener implements Listener {
 
         if (session.checkSuccess()) {
             Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT);
-            event.getClickedBlock().getState().update(true);
-            player.openInventory(((org.bukkit.block.Chest) event.getClickedBlock().getState()).getInventory());
+            // 打开开始撬锁时的目标箱子（判定时点击的可能是任意方块 / 空气）
+            Block target = session.getTarget();
+            if (target != null && target.getType() == Material.CHEST) {
+                target.getState().update(true);
+                player.openInventory(((org.bukkit.block.Chest) target.getState()).getInventory());
+                // 授予限时开箱授权：成功后在配置时长内可随时打开该箱子
+                gameManager.grantAccess(player, BlockLocation.from(target));
+            }
         } else {
             Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
         }
@@ -226,8 +257,17 @@ public class ChestListener implements Listener {
 
     private void startNewGame(PlayerInteractEvent event, Player player) {
         event.setCancelled(true);
-        if (gameManager.startGame(player)) {
-            Messages.send(player, Messages.START_PICKING, Messages.START_PICKING_FORMAT);
+        Block target = event.getClickedBlock();
+        // 生效等级 = 锁等级 - 撬锁器等级；小于等于 0 时使用默认配置（getGameConfig 内部处理）
+        int lockLevel = chestService.getLockLevel(target);
+        int pickerLevel = itemManager.getLevel(event.getItem());
+        int effectiveLevel = lockLevel - pickerLevel;
+        GameConfig levelConfig = lockConfigManager.getGameConfig(effectiveLevel);
+        // 开始提示与规则由 GameSession.start() 统一以标题显示（先规则后进度条），
+        // 此处不再发 START_PICKING，避免同通道标题后发覆盖规则消息。
+        if (gameManager.startGame(player, target, levelConfig) && config.isDebug()) {
+            gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_PICKLOCK_START_DEBUG,
+                    player.getName(), BlockLocation.from(target), lockLevel, pickerLevel, effectiveLevel));
         }
     }
 

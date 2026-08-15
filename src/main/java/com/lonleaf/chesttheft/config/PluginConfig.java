@@ -92,11 +92,7 @@ public class PluginConfig {
     private volatile String language;
     private volatile boolean languageDetected;
     private volatile String detectedLocale;
-    private volatile int barLength;
-    private volatile int redLength;
-    private volatile int moveInterval;
-    private volatile int timeoutSeconds;
-    private volatile int cooldownSeconds;
+    private volatile GameConfig gameConfig;
     private volatile boolean keyUnlockEnabled;
     private volatile boolean keyPairEnabled;
     private volatile Action keyInteractionAction;
@@ -142,11 +138,10 @@ public class PluginConfig {
             }
         } catch (Exception e) {
             logger.severe(Messages.getLog(Messages.LOG_CONFIG_LOAD_FAIL, e.getMessage()));
-            logger.log(Level.SEVERE, "Config load failure, keeping previous config", e);
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_CONFIG_KEEP_PREVIOUS), e);
         }
     }
 
-    /** 重载配置（reload 命令调用）。 */
     public void reload() {
         load();
     }
@@ -274,11 +269,7 @@ public class PluginConfig {
                 config.getString("database.timezone", "UTC")
         );
 
-        barLength = Math.max(5, config.getInt("game.bar-length", 15));
-        redLength = Math.max(1, Math.min(barLength - 2, config.getInt("game.red-length", 3)));
-        moveInterval = Math.max(1, config.getInt("game.move-interval", 10));
-        timeoutSeconds = Math.max(1, config.getInt("game.timeout", 15));
-        cooldownSeconds = Math.max(0, config.getInt("game.cooldown", 3));
+        gameConfig = GameConfig.from(config.getConfigurationSection("game"));
         keyUnlockEnabled = config.getBoolean("key.unlock-enabled", true);
         keyPairEnabled = config.getBoolean("key.pair-enabled", true);
         keyInteractionAction = parseAction(config.getString("key.interaction-action", "LEFT"));
@@ -329,29 +320,9 @@ public class PluginConfig {
         return detectedLocale;
     }
 
-    public int getBarLength() {
-        return barLength;
-    }
-
-    public int getRedLength() {
-        return redLength;
-    }
-
-    public int getMoveInterval() {
-        return moveInterval;
-    }
-
-    public int getTimeoutSeconds() {
-        return timeoutSeconds;
-    }
-
-    /** 换算为小游戏更新次数。 */
-    public int getTimeoutTicks() {
-        return Math.max(1, timeoutSeconds * 20 / moveInterval);
-    }
-
-    public int getCooldownSeconds() {
-        return cooldownSeconds;
+    /** 小游戏配置（game 小节）。 */
+    public GameConfig getGameConfig() {
+        return gameConfig;
     }
 
     public boolean isKeyUnlockEnabled() {

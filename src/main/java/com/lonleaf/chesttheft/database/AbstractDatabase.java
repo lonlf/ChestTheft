@@ -40,6 +40,7 @@ public abstract class AbstractDatabase implements Database {
                 + "locker_uuid VARCHAR(36) NOT NULL DEFAULT '',"
                 + "lock_token VARCHAR(36) NOT NULL DEFAULT '',"
                 + "paired_count INT NOT NULL DEFAULT 0,"
+                + "lock_level INT NOT NULL DEFAULT 0,"
                 + "UNIQUE(world, x, y, z)"
                 + ")";
         try (Statement stmt = connection.createStatement()) {
@@ -56,9 +57,12 @@ public abstract class AbstractDatabase implements Database {
             stmt.executeUpdate("ALTER TABLE " + TABLE + " ADD COLUMN locker_uuid VARCHAR(36) NOT NULL DEFAULT ''");
         } catch (SQLException ignored) {
         }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.executeUpdate("ALTER TABLE " + TABLE + " ADD COLUMN lock_level INT NOT NULL DEFAULT 0");
+        } catch (SQLException ignored) {
+        }
     }
 
-    /** 将物品序列化为 YAML 字符串。 */
     protected static String serializeItem(ItemStack item) {
         if (item == null) {
             return "";
@@ -95,8 +99,8 @@ public abstract class AbstractDatabase implements Database {
     }
 
     @Override
-    public void lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token) {
-        String sql = "INSERT INTO " + TABLE + " (world, x, y, z, lock_item, locker_uuid, lock_token) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    public void lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token, int level) {
+        String sql = "INSERT INTO " + TABLE + " (world, x, y, z, lock_item, locker_uuid, lock_token, lock_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
@@ -105,11 +109,31 @@ public abstract class AbstractDatabase implements Database {
             ps.setString(5, serializeItem(lockItem));
             ps.setString(6, lockerUuid);
             ps.setString(7, token);
+            ps.setInt(8, level);
             ps.executeUpdate();
         } catch (SQLException e) {
             // UNIQUE 约束冲突说明已上锁，属正常情况
             if (debug) logger.log(Level.INFO, Messages.getLog(Messages.LOG_DB_LOCK_DUP, location), e);
         }
+    }
+
+    @Override
+    public int getLockLevel(BlockLocation location) {
+        String sql = "SELECT lock_level FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, location.getWorld());
+            ps.setInt(2, location.getX());
+            ps.setInt(3, location.getY());
+            ps.setInt(4, location.getZ());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
+        }
+        return 0;
     }
 
     @Override

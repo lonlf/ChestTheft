@@ -1,5 +1,5 @@
 # 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
-config-version: 1
+config-version: 3
 # 是否输出调试日志
 debug: false
 # 语言设置: zh_cn / en_gb（首次启动时按服务器地区自动检测填充，可手动修改）
@@ -23,6 +23,8 @@ game:
   move-interval: 10  # 光标移动间隔（tick，20 tick = 1 秒）
   timeout: 15        # 超时时间（秒）
   cooldown: 3        # 撬锁结束后的冷却时间（秒）
+  access-duration: 60  # 撬锁成功后玩家可自由打开该箱子的时长（秒）；0 表示不启用限时授权，改为仅一次打开机会
+  access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时，撬锁成功后需在此窗口内使用这一次打开机会
 
 # 钥匙功能
 key:
@@ -43,9 +45,8 @@ message-format:
   pickingFail: title      # 撬锁失败
   pickingStart: title     # 开始撬锁
   pickingCancel: title    # 取消撬锁
-  pickingRule: subtitle    # 撬锁规则提示
-  pickingTimeout: subtitle   # 撬锁超时
-  pickingCooldown: subtitle  # 撬锁冷却
+  pickingTimeout: title   # 撬锁超时
+  pickingCooldown: title  # 撬锁冷却
   lockSuccess: title        # 上锁成功
   chestLocked: message      # 箱子已上锁
   unlockSuccess: message    # 卸锁成功

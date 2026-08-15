@@ -7,9 +7,6 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.UUID;
 
-/**
- * 上锁状态服务：封装数据库访问，供监听器调用。
- */
 public class ChestService {
     private final Database database;
 
@@ -22,8 +19,8 @@ public class ChestService {
     }
 
     /** 上锁：生成随机配对凭证并写入数据库（卸锁重上后旧钥匙凭证失效）。 */
-    public void lock(Block block, ItemStack lockItem, String lockerUuid) {
-        database.lock(BlockLocation.from(block), lockItem, lockerUuid, UUID.randomUUID().toString());
+    public void lock(Block block, ItemStack lockItem, String lockerUuid, int level) {
+        database.lock(BlockLocation.from(block), lockItem, lockerUuid, UUID.randomUUID().toString(), level);
     }
 
     /** 返回上锁者 UUID，无记录时返回 null。 */
@@ -36,12 +33,15 @@ public class ChestService {
         return database.getLockToken(BlockLocation.from(block));
     }
 
-    /** 该锁是否已有配对钥匙。 */
+    /** 返回锁等级（撬锁时选择对应难度配置），无记录或未配置时返回 0。 */
+    public int getLockLevel(Block block) {
+        return database.getLockLevel(BlockLocation.from(block));
+    }
+
     public boolean hasPairedKey(Block block) {
         return database.hasPairedKey(BlockLocation.from(block));
     }
 
-    /** 该锁已配对钥匙数 +1（钥匙配对时调用）。 */
     public void increasePairedCount(Block block) {
         database.increasePairedCount(BlockLocation.from(block));
     }

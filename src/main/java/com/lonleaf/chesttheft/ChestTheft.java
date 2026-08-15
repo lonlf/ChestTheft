@@ -1,6 +1,7 @@
 package com.lonleaf.chesttheft;
 
 import com.lonleaf.chesttheft.command.CommandManager;
+import com.lonleaf.chesttheft.config.LockConfigManager;
 import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.database.DatabaseManager;
@@ -20,6 +21,7 @@ public final class ChestTheft extends JavaPlugin {
 
     private DatabaseManager databaseManager;
     private GameManager gameManager;
+    private LockConfigManager lockConfigManager;
 
     @Override
     public void onLoad() {
@@ -61,11 +63,13 @@ public final class ChestTheft extends JavaPlugin {
         ItemManager itemManager = new ItemManager(itemTagger, itemConfigManager);
         // 协议包模块：为特殊物品动态注入 Lore 展示信息（类型、配对状态等）
         new PacketManager(this, config, itemConfigManager);
-        gameManager = new GameManager(this, config);
+        // 不同等级锁的小游戏配置（lock/lock.yml）；等级 0 固定为 config.yml 的 game 小节默认配置
+        lockConfigManager = new LockConfigManager(this, config.getGameConfig());
+        gameManager = new GameManager(this, config.getGameConfig());
 
-        getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config), this);
+        getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config, lockConfigManager), this);
 
-        new CommandManager(this, itemManager, itemTagger, itemConfigManager, config);
+        new CommandManager(this, itemManager, itemTagger, itemConfigManager, config, gameManager, lockConfigManager);
 
         getLogger().info(Messages.getLog(Messages.LOG_ENABLED));
     }

@@ -9,7 +9,7 @@ public interface Database {
     boolean isLocked(BlockLocation location);
 
     /** 记录箱子锁定，保存锁的物品数据与上锁者 UUID（用于卸锁返还与钥匙配对）。 */
-    void lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token);
+    void lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token, int level);
 
     /** 返回上锁者 UUID，无记录时返回 null。 */
     String getLocker(BlockLocation location);
@@ -17,7 +17,9 @@ public interface Database {
     /** 返回该锁的配对凭证（上锁时生成的随机值），无记录时返回 null。 */
     String getLockToken(BlockLocation location);
 
-    /** 该锁是否已有配对钥匙。 */
+    /** 返回锁等级（撬锁时选择对应难度配置），无记录或未配置时返回 0。 */
+    int getLockLevel(BlockLocation location);
+
     boolean hasPairedKey(BlockLocation location);
 
     /** 该锁已配对钥匙数 +1（钥匙配对时调用）。 */

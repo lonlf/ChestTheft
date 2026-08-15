@@ -15,15 +15,17 @@ public class ItemDefinition {
     private final String name;
     private final Material material;
     private final Integer customModelData;
+    private final int level;
     private final List<String> lore;
 
     private ItemDefinition(String id, ItemType type, String name, Material material,
-                           Integer customModelData, List<String> lore) {
+                           Integer customModelData, int level, List<String> lore) {
         this.id = id;
         this.type = type;
         this.name = name;
         this.material = material;
         this.customModelData = customModelData;
+        this.level = level;
         this.lore = lore;
     }
 
@@ -45,8 +47,9 @@ public class ItemDefinition {
             material = type.getDefaultMaterial();
         }
         Integer customModelData = section.contains("customModelData") ? section.getInt("customModelData") : null;
+        int level = Math.max(0, section.getInt("level", 0));
         List<String> lore = section.getStringList("lore");
-        return new ItemDefinition(id, type, name, material, customModelData, lore);
+        return new ItemDefinition(id, type, name, material, customModelData, level, lore);
     }
 
     public String getId() {
@@ -69,6 +72,11 @@ public class ItemDefinition {
     /** 自定义模型数据，null 表示不设置。 */
     public Integer getCustomModelData() {
         return customModelData;
+    }
+
+    /** 锁等级（撬锁时选择对应难度配置），未配置时返回 0。 */
+    public int getLevel() {
+        return level;
     }
 
     public List<String> getLore() {

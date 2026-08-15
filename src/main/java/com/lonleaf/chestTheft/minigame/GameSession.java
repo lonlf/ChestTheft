@@ -1,22 +1,22 @@
 package com.lonleaf.chesttheft.minigame;
 
+import com.lonleaf.chesttheft.config.GameConfig;
 import com.lonleaf.chesttheft.config.Messages;
-import com.lonleaf.chesttheft.config.PluginConfig;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.ChatColor;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * 撬锁小游戏会话：光标在进度条上往返移动，绿色光标进入红色区域时点击即可成功。
- */
 public class GameSession {
     private final Player player;
     private final GameManager gameManager;
-    private final PluginConfig config;
+    private final GameConfig config;
+    /** 开始撬锁时的目标箱子：判定成功后打开此箱子。 */
+    private final Block target;
     private BukkitTask task;
 
     private int cursorPos = 0;
@@ -25,10 +25,11 @@ public class GameSession {
     private int redLength;
     private int elapsedTicks = 0;
 
-    public GameSession(Player player, GameManager gameManager, PluginConfig config) {
+    public GameSession(Player player, GameManager gameManager, GameConfig config, Block target) {
         this.player = player;
         this.gameManager = gameManager;
         this.config = config;
+        this.target = target;
         initializeGame();
     }
 
@@ -38,7 +39,8 @@ public class GameSession {
     }
 
     public void start() {
-        Messages.send(player, Messages.RULE, Messages.RULE_FORMAT);
+        // 规则提示固定显示在动作栏（不参与配置自定义），与进度条标题同步启动；不同通道互不覆盖
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(Messages.get(Messages.RULE)));
         task = gameManager.getPlugin().getServer().getScheduler().runTaskTimer(
                 gameManager.getPlugin(),
                 this::update,
@@ -81,11 +83,16 @@ public class GameSession {
                 sb.append(ChatColor.WHITE).append('|');
             }
         }
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(sb.toString()));
+        // 进度条显示在标题上；fadeIn/fadeOut 为 0 避免刷新闪烁，stay 覆盖到下一次刷新
+        player.sendTitle(sb.toString(), "", 0, config.getMoveInterval() + 1, 0);
     }
 
     public boolean checkSuccess() {
         return cursorPos >= redStart && cursorPos < redStart + redLength;
+    }
+
+    public Block getTarget() {
+        return target;
     }
 
     public void stop() {
@@ -93,6 +100,6 @@ public class GameSession {
             task.cancel();
             task = null;
         }
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(""));
+        // 不清空标题：结束提示（成功/失败/超时/取消）会以标题覆盖进度条，此处清空反而会让提示消失
     }
 }

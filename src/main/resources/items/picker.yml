@@ -1,10 +1,12 @@
 # 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
 # 添加自定义物品：复制一份定义并修改 ID（如 picker002）与 name/material 等即可
+# level: 撬锁器等级，撬锁时生效等级 = 锁等级 - 撬锁器等级（越小越容易撬）
 picker001:
   type: picker
   name: "Example picker"
   material: FISHING_ROD
   customModelData: 13086
+  level: 1
   lore:
     - "This is a example picker001"
     - "Use this to picklock a locked chest."

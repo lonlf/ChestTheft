@@ -67,12 +67,20 @@ public class ItemManager {
         return type == getType(item);
     }
 
-    /** 将物品写入持久化标签，标记为指定 ID 的特殊物品。 */
+    /** 读取物品定义的锁等级，非特殊物品或定义缺失时返回 0。 */
+    public int getLevel(ItemStack item) {
+        String id = tagger.getId(item);
+        if (id == null) {
+            return 0;
+        }
+        ItemDefinition def = configManager.getDefinition(id);
+        return def == null ? 0 : def.getLevel();
+    }
+
     public void tag(ItemStack item, String id) {
         tagger.tag(item, id);
     }
 
-    /** 将物品标记为该类型的默认特殊物品。 */
     public void tagAsDefault(ItemStack item, ItemType type) {
         String id = configManager.getDefaultId(type);
         if (id != null) {
@@ -80,7 +88,6 @@ public class ItemManager {
         }
     }
 
-    /** 将钥匙与锁配对：把锁的位置与锁凭证写入钥匙的持久化存储。 */
     public void setPairedLock(ItemStack item, BlockLocation location, String token) {
         tagger.setPairedLock(item, location, token);
     }
@@ -95,7 +102,6 @@ public class ItemManager {
         return tagger.getPairedLock(item);
     }
 
-    /** 钥匙是否与该锁配对。 */
     public boolean isPairedTo(ItemStack item, BlockLocation location) {
         return tagger.isPairedTo(item, location);
     }

@@ -1,0 +1,31 @@
+# 不同等级锁的小游戏配置：以数字作为等级键，键越大难度越高；name 为该等级的名称
+# 等级 0：定义时覆盖默认配置（config.yml 的 game 小节）；未定义时等级 0 使用默认配置
+# 未在此处配置的正等级将按就近原则回退：更低可用等级 → 更高可用等级 → 默认配置
+# 新增等级：复制一份配置并将键改为更大的数字即可
+1:
+  name: normal     # 等级名称
+  bar-length: 15   # 进度条总格数
+  red-length: 3    # 红色区域长度
+  move-interval: 10 # 光标移动间隔（tick，20 tick = 1 秒）
+  timeout: 15      # 超时时间（秒）
+  cooldown: 3      # 撬锁结束后的冷却时间（秒）
+  access-duration: 60  # 撬锁成功后玩家可自由打开该箱子的时长（秒）；0 表示不启用限时授权，改为仅一次打开机会
+  access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时生效
+2:
+  name: advanced
+  bar-length: 20
+  red-length: 2
+  move-interval: 8
+  timeout: 18
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+3:
+  name: master
+  bar-length: 25
+  red-length: 2
+  move-interval: 5
+  timeout: 20
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60

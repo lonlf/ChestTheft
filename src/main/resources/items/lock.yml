@@ -1,10 +1,12 @@
 # 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
 # 添加自定义物品：复制一份定义并修改 ID（如 lock002）与 name/material 等即可
+# level: 锁等级（数字，对应 lock/lock.yml 中的等级键），未配置时撬锁使用默认难度
 lock001:
   type: lock
   name: "Example lock"
   material: IRON_INGOT
   customModelData: 13085
+  level: 1
   lore:
     - "This is a example lock001"
     - "Right click an unlocked chest to lock it."
