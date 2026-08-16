@@ -46,6 +46,11 @@ public class ChestService {
         database.increasePairedCount(BlockLocation.from(block));
     }
 
+    /** 返回该锁保存的物品数据（含触发器标签），无记录时返回 null。 */
+    public ItemStack getLockItem(Block block) {
+        return database.getLockItem(BlockLocation.from(block));
+    }
+
     /** 解除锁定并返回保存的锁物品，无记录时返回 null。 */
     public ItemStack unlock(Block block) {
         return database.unlock(BlockLocation.from(block));

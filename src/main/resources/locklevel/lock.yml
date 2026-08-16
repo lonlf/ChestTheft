@@ -11,6 +11,8 @@
   cooldown: 3      # 撬锁结束后的冷却时间（秒）
   access-duration: 60  # 撬锁成功后玩家可自由打开该箱子的时长（秒）；0 表示不启用限时授权，改为仅一次打开机会
   access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时生效
+  interrupt-damage: true    # 撬锁中受到伤害是否中断
+  interrupt-move-range: 3.0  # 撬锁中移动超过该范围（方块）是否中断；0 或负值关闭
 2:
   name: advanced
   bar-length: 20
@@ -20,6 +22,8 @@
   cooldown: 3
   access-duration: 60
   access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
 3:
   name: master
   bar-length: 25
@@ -29,3 +33,5 @@
   cooldown: 3
   access-duration: 60
   access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0

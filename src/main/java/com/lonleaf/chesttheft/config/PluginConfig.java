@@ -108,10 +108,7 @@ public class PluginConfig {
         load();
     }
 
-    /**
-     * 加载配置文件；saveDefaultConfig 会自动释放资源中的 config.yml。
-     * 配置加载失败时保留旧配置继续运行，不让插件加载失败。
-     */
+    /** 加载配置文件（含首次启动语言检测写回、config-version 自动升级）；失败保留旧配置继续运行。 */
     public void load() {
         try {
             // 首次启动（config.yml 不存在）：saveDefaultConfig 复制模板后按系统语言设置 language 项
@@ -147,10 +144,8 @@ public class PluginConfig {
     }
 
     /**
-     * 配置自动升级：以 jar 内模板为准，若文件中 config-version 低于模板版本，
-     * 先将模板中缺失的键以扁平键形式追加到文件末尾（不重写已有内容，保留注释），
-     * 更新 config-version 并原子写回（tmp + ATOMIC_MOVE，避免写入中断损坏文件）。
-     * 文件内容不匹配模板时由 applyConfig 的默认值兜底。
+     * 配置自动升级：config-version 落后时按模板追加缺失键（保留已有内容与注释），
+     * 更新版本号并原子写回。
      */
     private void upgradeConfigFile() {
         FileConfiguration template;
@@ -223,11 +218,7 @@ public class PluginConfig {
         return String.valueOf(value);
     }
 
-    /**
-     * 原子写回配置文件：先写入同名 .tmp 文件，再原子替换目标文件，
-     * 避免写入中断（磁盘满/进程崩溃）导致配置文件损坏。
-     * 文件系统不支持原子移动时降级为普通替换。
-     */
+    /** 原子写回：先写 tmp 再原子替换（防写入中断损坏），不支持原子移动时降级为普通替换。 */
     private void writeConfigAtomic(File file, String content) throws java.io.IOException {
         Path path = file.toPath();
         Path tmp = path.resolveSibling(file.getName() + ".tmp");
@@ -250,7 +241,6 @@ public class PluginConfig {
             languageDetected = true;
         } catch (Exception e) {
             logger.warning(Messages.getLog(Messages.LOG_LANG_WRITE_FAIL, detected, e.getMessage()));
-            logger.warning("Failed to write language to config, keeping default"); // 兜底日志（消息未就绪时仍可诊断）
         }
     }
 

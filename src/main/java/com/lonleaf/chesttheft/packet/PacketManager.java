@@ -26,22 +26,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 协议包处理模块（PacketEvents）：监听服务器发送的物品包（窗口物品 / 槽位更新 / 玩家背包 /
- * 光标物品），为特殊物品（钥匙 / 锁 / 撬锁器）动态注入 Lore 展示信息（类型、配对位置等）。
- * 仅在客户端可见的包内物品上追加 Lore，不改动服务器端真实物品数据与玩法逻辑。
- *
- * 覆盖以下包类型，避免玩家在背包内点击 / 拖动、物品移至光标等场景下注入的 Lore 丢失：
- * - WINDOW_ITEMS：打开容器时整窗口物品（含光标携带物品 carriedItem）
- * - SET_SLOT：容器 / 快捷栏槽位单物品更新（丢地上再捡起即走此包）
- * - SET_PLAYER_INVENTORY：1.20.5+ 玩家自身生存背包槽位同步包
- * - SET_CURSOR_ITEM：点击拿起物品时光标上的物品同步包
- *
- * 识别与配对信息均从包内物品的 NBT 直接读取。Bukkit 的持久化数据（PDC）在 NBT 中的
- * 存储位置随版本不同：
- * 1.20.5+ 存于物品组件的 minecraft:custom_data 中（实测为 PublicBukkitValues 包装，
- * 以完整命名空间键存储；部分版本为 namespace 嵌套结构）；
- * 1.20.5 之前存于 tag 的 PublicBukkitValues。
- * 各结构均兼容读取，避免经 Bukkit ItemStack 往返转换时 PDC 数据不可用的问题。
+ * 协议包处理模块（PacketEvents）：监听物品包为特殊物品动态注入 Lore（仅客户端可见，
+ * 不改服务器端真实数据）。覆盖 WINDOW_ITEMS / SET_SLOT / SET_PLAYER_INVENTORY /
+ * SET_CURSOR_ITEM 四类包，避免点击、拖动、光标携带等场景下注入的 Lore 丢失。
+ * 版本差异（1.20.5+ 组件化 custom_data）见插件结构与功能说明文档。
  */
 public class PacketManager implements PacketListener {
 
@@ -211,11 +199,7 @@ public class PacketManager implements PacketListener {
         return modified;
     }
 
-    /**
-     * 兼容不同版本从 NBT 中读取 PDC 字符串值。实测结构（1.20.5+ 服务端）：
-     * custom_data 组件内为 PublicBukkitValues 包装（以完整命名空间键存储）；
-     * 部分版本为 namespace -> { key: value } 嵌套结构；旧版本位于 tag 的 PublicBukkitValues。
-     */
+    /** 兼容不同版本从 NBT 读取 PDC：custom_data 组件内为 PublicBukkitValues 包装或 namespace 嵌套，旧版位于 tag。 */
     private String readNbtString(NBTCompound legacyTag, NBTCompound customData, String key) {
         if (customData != null) {
             // 结构一：custom_data 内嵌套 namespace（{ chesttheft: { item_id: "..." } }）

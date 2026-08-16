@@ -5,6 +5,7 @@ import com.lonleaf.chesttheft.config.Messages;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -17,6 +18,8 @@ public class GameSession {
     private final GameConfig config;
     /** 开始撬锁时的目标箱子：判定成功后打开此箱子。 */
     private final Block target;
+    /** 开始撬锁时的玩家位置：移动超范围中断判定基准。 */
+    private final Location startLocation;
     private BukkitTask task;
 
     private int cursorPos = 0;
@@ -30,6 +33,7 @@ public class GameSession {
         this.gameManager = gameManager;
         this.config = config;
         this.target = target;
+        this.startLocation = player.getLocation().clone();
         initializeGame();
     }
 
@@ -91,8 +95,16 @@ public class GameSession {
         return cursorPos >= redStart && cursorPos < redStart + redLength;
     }
 
+    public GameConfig getConfig() {
+        return config;
+    }
+
     public Block getTarget() {
         return target;
+    }
+
+    public Location getStartLocation() {
+        return startLocation;
     }
 
     public void stop() {

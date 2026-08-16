@@ -5,6 +5,7 @@ import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.item.ItemConfigManager;
 import com.lonleaf.chesttheft.minigame.GameManager;
+import com.lonleaf.chesttheft.trigger.TriggerManager;
 import org.bukkit.command.CommandSender;
 
 import java.util.List;
@@ -14,13 +15,16 @@ public class ReloadCommand implements Command {
     private final ItemConfigManager itemConfigManager;
     private final GameManager gameManager;
     private final LockConfigManager lockConfigManager;
+    private final TriggerManager triggerManager;
 
     public ReloadCommand(PluginConfig config, ItemConfigManager itemConfigManager,
-                         GameManager gameManager, LockConfigManager lockConfigManager) {
+                         GameManager gameManager, LockConfigManager lockConfigManager,
+                         TriggerManager triggerManager) {
         this.config = config;
         this.itemConfigManager = itemConfigManager;
         this.gameManager = gameManager;
         this.lockConfigManager = lockConfigManager;
+        this.triggerManager = triggerManager;
     }
 
     @Override
@@ -38,6 +42,7 @@ public class ReloadCommand implements Command {
         gameManager.updateConfig(config.getGameConfig());
         lockConfigManager.load();
         lockConfigManager.updateDefaultConfig(config.getGameConfig());
+        triggerManager.load();
         Messages.reload(config.getLanguage());
         Messages.applyFormats(config.getMessageFormats());
         Messages.send(sender, Messages.RELOADED, Messages.RELOADED_FORMAT);

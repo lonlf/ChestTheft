@@ -1,0 +1,44 @@
+# 触发器配置：以 id 作为主键，type 指定触发类型，actions 为触发动作组
+# 触发类型（type）:
+#   success     撬锁成功
+#   fail        撬锁失败
+#   cancel      取消撬锁（潜行）
+#   interrupted 撬锁被打断（受击 / 移动超范围）
+#   lock        上锁
+#   key-open    用钥匙开锁
+#   key-pair    配对钥匙
+# 动作格式参照 CustomFishing（actions 下每个动作以动作 id 为键）:
+#   type   动作类型
+#   value  动作参数
+#   chance 触发概率（0~1，可选，默认 1）
+# 可用占位符: {player} {world} {x} {y} {z}
+# 动作类型:
+#   消息:   message / random-message / broadcast
+#   命令:   command / player-command / random-command
+#   界面:   actionbar / random-actionbar / title / random-title / close-inv
+#   音效:   sound
+#   属性:   exp / level / food / saturation / potion-effect
+#   物品:   give-item（value 含 item 材质 / amount 数量 / to-inventory 是否入包）
+#   组合:   chain / delay（value 含 delay tick 与 actions 动作组）
+example_success:
+  type: interrupted
+  actions:
+    msg1:
+      type: message
+      value: "&c撬锁中断！"
+
+example_success:
+  type: success
+  actions:
+    msg1:
+      type: message
+      value: "&a撬锁成功！"
+    snd1:
+      type: sound
+      value:
+        key: "minecraft:block.note_block.pling"
+        volume: 1
+        pitch: 1.5
+    exp1:
+      type: exp
+      value: 5

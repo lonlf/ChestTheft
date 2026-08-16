@@ -25,6 +25,8 @@ game:
   cooldown: 3        # 撬锁结束后的冷却时间（秒）
   access-duration: 60  # 撬锁成功后玩家可自由打开该箱子的时长（秒）；0 表示不启用限时授权，改为仅一次打开机会
   access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时，撬锁成功后需在此窗口内使用这一次打开机会
+  interrupt-damage: true    # 撬锁过程中受到伤害时是否中断撬锁
+  interrupt-move-range: 3.0  # 撬锁过程中移动超过该范围（方块）时中断撬锁；0 或负值表示不限制移动
 
 # 钥匙功能
 key:
@@ -44,7 +46,8 @@ message-format:
   pickingSuccess: title   # 撬锁成功
   pickingFail: title      # 撬锁失败
   pickingStart: title     # 开始撬锁
-  pickingCancel: title    # 取消撬锁
+  pickingCancel: title   # 取消撬锁
+  pickingInterrupt: title   # 撬锁被中断（受击/移动超范围）
   pickingTimeout: title   # 撬锁超时
   pickingCooldown: title  # 撬锁冷却
   lockSuccess: title        # 上锁成功

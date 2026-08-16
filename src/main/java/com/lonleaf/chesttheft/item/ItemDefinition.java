@@ -17,9 +17,12 @@ public class ItemDefinition {
     private final Integer customModelData;
     private final int level;
     private final List<String> lore;
+    /** 锁物品自带的多个触发器配置段（triggers.<id>.type/actions），未配置时为 null。 */
+    private final ConfigurationSection triggers;
 
     private ItemDefinition(String id, ItemType type, String name, Material material,
-                           Integer customModelData, int level, List<String> lore) {
+                           Integer customModelData, int level, List<String> lore,
+                           ConfigurationSection triggers) {
         this.id = id;
         this.type = type;
         this.name = name;
@@ -27,6 +30,7 @@ public class ItemDefinition {
         this.customModelData = customModelData;
         this.level = level;
         this.lore = lore;
+        this.triggers = triggers;
     }
 
     /** 从配置段解析物品定义；type 缺失或非法时返回 null（由调用方跳过并告警）。 */
@@ -49,7 +53,8 @@ public class ItemDefinition {
         Integer customModelData = section.contains("customModelData") ? section.getInt("customModelData") : null;
         int level = Math.max(0, section.getInt("level", 0));
         List<String> lore = section.getStringList("lore");
-        return new ItemDefinition(id, type, name, material, customModelData, level, lore);
+        ConfigurationSection triggers = section.getConfigurationSection("triggers");
+        return new ItemDefinition(id, type, name, material, customModelData, level, lore, triggers);
     }
 
     public String getId() {
@@ -81,5 +86,10 @@ public class ItemDefinition {
 
     public List<String> getLore() {
         return lore;
+    }
+
+    /** 锁物品自带的多个触发器配置段，未配置时返回 null。 */
+    public ConfigurationSection getTriggers() {
+        return triggers;
     }
 }

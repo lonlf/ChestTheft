@@ -223,7 +223,8 @@ public abstract class AbstractDatabase implements Database {
         return lockItem;
     }
 
-    private ItemStack getLockItem(BlockLocation location) {
+    @Override
+    public ItemStack getLockItem(BlockLocation location) {
         String sql = "SELECT lock_item FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());

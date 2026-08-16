@@ -10,11 +10,15 @@ public class ItemTagger {
     private final NamespacedKey idKey;
     private final NamespacedKey lockKey;
     private final NamespacedKey tokenKey;
+    /** 锁物品自带的触发器配置（YAML 字符串），上锁时写入并随物品持久化。 */
+    private final NamespacedKey triggerKey;
 
-    public ItemTagger(NamespacedKey idKey, NamespacedKey lockKey, NamespacedKey tokenKey) {
+    public ItemTagger(NamespacedKey idKey, NamespacedKey lockKey, NamespacedKey tokenKey,
+                      NamespacedKey triggerKey) {
         this.idKey = idKey;
         this.lockKey = lockKey;
         this.tokenKey = tokenKey;
+        this.triggerKey = triggerKey;
     }
 
     public void tag(ItemStack item, String id) {
@@ -76,5 +80,26 @@ public class ItemTagger {
     public boolean isPairedTo(ItemStack item, BlockLocation location) {
         BlockLocation paired = getPairedLock(item);
         return paired != null && paired.equals(location);
+    }
+
+    /** 写入锁物品的触发器配置（YAML 字符串）。 */
+    public void setLockTrigger(ItemStack item, String data) {
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(triggerKey, PersistentDataType.STRING, data);
+            item.setItemMeta(meta);
+        }
+    }
+
+    /** 读取锁物品的触发器配置，未配置时返回 null。 */
+    public String getLockTrigger(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) {
+            return null;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return null;
+        }
+        return meta.getPersistentDataContainer().get(triggerKey, PersistentDataType.STRING);
     }
 }

@@ -25,6 +25,9 @@ public interface Database {
     /** 该锁已配对钥匙数 +1（钥匙配对时调用）。 */
     void increasePairedCount(BlockLocation location);
 
+    /** 返回该锁保存的物品数据（含触发器标签），无记录时返回 null，不删除记录。 */
+    ItemStack getLockItem(BlockLocation location);
+
     /** 解除锁定并返回保存的锁物品，无记录时返回 null。 */
     ItemStack unlock(BlockLocation location);
 

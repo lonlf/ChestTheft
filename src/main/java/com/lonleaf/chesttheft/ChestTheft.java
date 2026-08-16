@@ -12,6 +12,7 @@ import com.lonleaf.chesttheft.item.ItemTagger;
 import com.lonleaf.chesttheft.listener.ChestListener;
 import com.lonleaf.chesttheft.packet.PacketManager;
 import com.lonleaf.chesttheft.service.ChestService;
+import com.lonleaf.chesttheft.trigger.TriggerManager;
 import com.github.retrooper.packetevents.PacketEvents;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import org.bukkit.NamespacedKey;
@@ -58,18 +59,23 @@ public final class ChestTheft extends JavaPlugin {
         databaseManager = new DatabaseManager(this, config);
         ChestService chestService = new ChestService(databaseManager.getDatabase());
         ItemTagger itemTagger = new ItemTagger(new NamespacedKey(this, "item_id"),
-                new NamespacedKey(this, "paired_lock"), new NamespacedKey(this, "paired_token"));
+                new NamespacedKey(this, "paired_lock"), new NamespacedKey(this, "paired_token"),
+                new NamespacedKey(this, "lock_trigger"));
         ItemConfigManager itemConfigManager = new ItemConfigManager(this);
         ItemManager itemManager = new ItemManager(itemTagger, itemConfigManager);
         // 协议包模块：为特殊物品动态注入 Lore 展示信息（类型、配对状态等）
         new PacketManager(this, config, itemConfigManager);
-        // 不同等级锁的小游戏配置（lock/lock.yml）；等级 0 固定为 config.yml 的 game 小节默认配置
+        // 不同等级锁的小游戏配置（locklevel/lock.yml）；等级 0 固定为 config.yml 的 game 小节默认配置
         lockConfigManager = new LockConfigManager(this, config.getGameConfig());
-        gameManager = new GameManager(this, config.getGameConfig());
+        // 触发器系统：加载 trigger 文件夹配置，在撬锁成功/失败/取消/打断、上锁、钥匙开锁/配对时执行配置动作
+        TriggerManager triggerManager = new TriggerManager(this);
+        gameManager = new GameManager(this, config.getGameConfig(), triggerManager, chestService, itemManager);
 
-        getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config, lockConfigManager), this);
+        getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config, lockConfigManager, triggerManager), this);
+        // 小游戏管理器监听：撬锁中受击或移动超范围时按配置中止游戏
+        getServer().getPluginManager().registerEvents(gameManager, this);
 
-        new CommandManager(this, itemManager, itemTagger, itemConfigManager, config, gameManager, lockConfigManager);
+        new CommandManager(this, itemManager, itemTagger, itemConfigManager, config, gameManager, lockConfigManager, triggerManager);
 
         getLogger().info(Messages.getLog(Messages.LOG_ENABLED));
     }

@@ -2,17 +2,30 @@ package com.lonleaf.chesttheft.minigame;
 
 import com.lonleaf.chesttheft.config.GameConfig;
 import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.item.ItemManager;
 import com.lonleaf.chesttheft.model.BlockLocation;
+import com.lonleaf.chesttheft.service.ChestService;
+import com.lonleaf.chesttheft.trigger.TriggerContext;
+import com.lonleaf.chesttheft.trigger.TriggerManager;
+import com.lonleaf.chesttheft.trigger.TriggerType;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class GameManager {
+public class GameManager implements Listener {
     private final JavaPlugin plugin;
+    private final TriggerManager triggerManager;
+    private final ChestService chestService;
+    private final ItemManager itemManager;
     /** 默认小游戏配置（来自配置文件 game 小节）：未指定特定配置时使用。 */
     // volatile：reload 在主线程更新，事件监听器 / 定时任务线程读取
     private volatile GameConfig defaultGameConfig;
@@ -21,9 +34,13 @@ public class GameManager {
     /** 撬锁成功后的开箱授权：玩家 → (箱子位置 → 授权记录)。 */
     private final Map<UUID, Map<BlockLocation, AccessGrant>> grantedAccess = new HashMap<>();
 
-    public GameManager(JavaPlugin plugin, GameConfig defaultGameConfig) {
+    public GameManager(JavaPlugin plugin, GameConfig defaultGameConfig, TriggerManager triggerManager,
+                       ChestService chestService, ItemManager itemManager) {
         this.plugin = plugin;
         this.defaultGameConfig = defaultGameConfig;
+        this.triggerManager = triggerManager;
+        this.chestService = chestService;
+        this.itemManager = itemManager;
     }
 
     /** reload 时更新默认配置（后续新会话使用新配置，进行中的会话保持旧配置）。 */
@@ -126,6 +143,56 @@ public class GameManager {
 
     public GameSession getSession(Player player) {
         return activeGames.get(player.getUniqueId());
+    }
+
+    /** 撬锁中受到伤害：按当前会话配置决定是否中断（伤害被取消时不视为受击）。 */
+    @EventHandler
+    public void onDamage(EntityDamageEvent event) {
+        if (event.isCancelled() || !(event.getEntity() instanceof Player player)) {
+            return;
+        }
+        GameSession session = activeGames.get(player.getUniqueId());
+        if (session != null && session.getConfig().isInterruptDamage()) {
+            interrupt(session, player);
+        }
+    }
+
+    /** 撬锁中移动超过配置范围：按当前会话配置决定是否中断。 */
+    @EventHandler
+    public void onMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        GameSession session = activeGames.get(player.getUniqueId());
+        if (session == null) {
+            return;
+        }
+        double range = session.getConfig().getInterruptMoveRange();
+        if (range > 0 && session.getStartLocation().distance(event.getTo()) > range) {
+            interrupt(session, player);
+        }
+    }
+
+    private void interrupt(GameSession session, Player player) {
+        Messages.send(player, Messages.PICK_INTERRUPTED, Messages.PICK_INTERRUPTED_FORMAT);
+        BlockLocation location = BlockLocation.from(session.getTarget());
+        triggerManager.fire(TriggerType.INTERRUPTED, new TriggerContext(player, location));
+        fireLockTrigger(session.getTarget(), player);
+        endGame(player);
+    }
+
+    /** 触发目标锁物品自带的打断触发器；锁未配置时不处理。 */
+    private void fireLockTrigger(Block target, Player player) {
+        if (target == null) {
+            return;
+        }
+        ItemStack lockItem = chestService.getLockItem(target);
+        if (lockItem == null) {
+            return;
+        }
+        String triggerData = itemManager.getLockTrigger(lockItem);
+        if (triggerData != null) {
+            triggerManager.fireForLock(triggerData, TriggerType.INTERRUPTED,
+                    new TriggerContext(player, BlockLocation.from(target)));
+        }
     }
 
     public JavaPlugin getPlugin() {

@@ -10,6 +10,9 @@ import com.lonleaf.chesttheft.item.ItemManager;
 import com.lonleaf.chesttheft.item.ItemType;
 import com.lonleaf.chesttheft.model.BlockLocation;
 import com.lonleaf.chesttheft.service.ChestService;
+import com.lonleaf.chesttheft.trigger.TriggerContext;
+import com.lonleaf.chesttheft.trigger.TriggerManager;
+import com.lonleaf.chesttheft.trigger.TriggerType;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -30,20 +33,24 @@ public class ChestListener implements Listener {
     private final GameManager gameManager;
     private final ItemManager itemManager;
     private final PluginConfig config;
-    /** 不同等级锁的小游戏配置（lock/lock.yml），撬锁时按锁等级取对应配置。 */
+    /** 不同等级锁的小游戏配置（locklevel/lock.yml），撬锁时按锁等级取对应配置。 */
     private final LockConfigManager lockConfigManager;
+    /** 触发器系统：在撬锁成功/失败/取消、上锁、钥匙开锁/配对时执行配置动作。 */
+    private final TriggerManager triggerManager;
     /** 卸锁确认状态：玩家待确认的卸锁目标（位置 + 时间戳），需交互两次才真正卸锁。 */
     private final Map<UUID, UnlockConfirm> pendingUnlock = new HashMap<>();
     /** 卸锁确认窗口（毫秒），超时后需重新发起确认。 */
     private static final long UNLOCK_CONFIRM_TIMEOUT_MS = 5000L;
 
     public ChestListener(ChestService chestService, GameManager gameManager,
-                         ItemManager itemManager, PluginConfig config, LockConfigManager lockConfigManager) {
+                         ItemManager itemManager, PluginConfig config, LockConfigManager lockConfigManager,
+                         TriggerManager triggerManager) {
         this.chestService = chestService;
         this.gameManager = gameManager;
         this.itemManager = itemManager;
         this.config = config;
         this.lockConfigManager = lockConfigManager;
+        this.triggerManager = triggerManager;
     }
 
     @EventHandler
@@ -86,8 +93,9 @@ public class ChestListener implements Listener {
                     // 交互按键：未配对钥匙由上锁者配对；已配对钥匙卸下锁
                     handleKeyPress(event, player, block, location, item);
                 } else if (isKeyMatched(item, location, block)) {
-                    // 位置与凭证均匹配的钥匙可直接打开箱子
                     event.setCancelled(false);
+                    triggerManager.fire(TriggerType.KEY_OPEN, new TriggerContext(player, location));
+                    fireLockTrigger(block, TriggerType.KEY_OPEN, player);
                 } else if (itemManager.isPairedTo(item, location)) {
                     // 位置匹配但凭证不匹配：锁已更换，旧钥匙失效
                     event.setCancelled(true);
@@ -97,23 +105,46 @@ public class ChestListener implements Listener {
                     Messages.send(player, Messages.KEY_NOT_MATCHED, Messages.KEY_NOT_MATCHED_FORMAT);
                 }
             } else if (!config.isKeyRequireInHand() && hasMatchedBagKey(player, block, location)) {
-                // 背包中有与该锁配对的钥匙时可直接打开
                 event.setCancelled(false);
+                triggerManager.fire(TriggerType.KEY_OPEN, new TriggerContext(player, location));
+                fireLockTrigger(block, TriggerType.KEY_OPEN, player);
             } else {
-                // 非特殊物品（或空手）点击上锁箱子：拦截并提示
                 event.setCancelled(true);
                 Messages.send(player, Messages.CHEST_LOCKED, Messages.CHEST_LOCKED_FORMAT);
             }
         } else if (item != null && itemManager.isType(item, ItemType.LOCK)) {
             int level = itemManager.getLevel(item);
+            // 锁物品定义配置了 triggers 时写入物品标签，随物品持久化到数据库
+            String lockTrigger = itemManager.serializeLockTriggers(item);
+            if (lockTrigger != null) {
+                itemManager.setLockTrigger(item, lockTrigger);
+            }
             chestService.lock(block, item, player.getUniqueId().toString(), level);
             event.setCancelled(true);
             Messages.send(player, Messages.LOCKED_IT, Messages.LOCKED_IT_FORMAT);
+            BlockLocation location = BlockLocation.from(block);
+            triggerManager.fire(TriggerType.LOCK, new TriggerContext(player, location));
+            triggerManager.fireForLock(lockTrigger, TriggerType.LOCK, new TriggerContext(player, location));
             // 锁等级未配置（撬锁时会降级回退）时恒输出日志便于排查配置问题；等级已配置时仅 debug 输出
             if (!lockConfigManager.isLevelConfigured(level) || config.isDebug()) {
                 gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_LOCK_APPLIED,
-                        player.getName(), BlockLocation.from(block), level));
+                        player.getName(), location, level));
             }
+        }
+    }
+
+    /** 触发目标锁物品自带的指定类型触发器；锁未配置对应触发器时不处理。 */
+    private void fireLockTrigger(Block block, TriggerType type, Player player) {
+        if (block == null) {
+            return;
+        }
+        ItemStack lockItem = chestService.getLockItem(block);
+        if (lockItem == null) {
+            return;
+        }
+        String triggerData = itemManager.getLockTrigger(lockItem);
+        if (triggerData != null) {
+            triggerManager.fireForLock(triggerData, type, new TriggerContext(player, BlockLocation.from(block)));
         }
     }
 
@@ -141,8 +172,10 @@ public class ChestListener implements Listener {
                         pendingUnlock.put(player.getUniqueId(), new UnlockConfirm(location, now));
                         Messages.send(player, Messages.UNLOCK_CONFIRM, Messages.UNLOCK_CONFIRM_FORMAT);
                     }
+                } else {
+                    // 卸锁功能关闭时放行，按普通点击打开箱子
+                    triggerManager.fire(TriggerType.KEY_OPEN, new TriggerContext(player, location));
                 }
-                // 卸锁功能关闭时放行，按普通点击打开箱子
             } else {
                 // 位置匹配但凭证不匹配：锁已更换，旧钥匙失效
                 event.setCancelled(true);
@@ -174,6 +207,7 @@ public class ChestListener implements Listener {
         // 必须重新写回对应手部槽位，配对数据才会持久化，并触发 SET_SLOT 包使客户端立即刷新 lore。
         player.getInventory().setItem(event.getHand(), key);
         Messages.send(player, Messages.PAIR_SUCCESS, Messages.PAIR_SUCCESS_FORMAT);
+        triggerManager.fire(TriggerType.KEY_PAIR, new TriggerContext(player, location));
     }
 
     /** 钥匙与锁完全匹配：配对位置一致且配对凭证与锁当前凭证一致。 */
@@ -241,6 +275,8 @@ public class ChestListener implements Listener {
 
         if (session.checkSuccess()) {
             Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT);
+            triggerManager.fire(TriggerType.SUCCESS, new TriggerContext(player, BlockLocation.from(session.getTarget())));
+            fireLockTrigger(session.getTarget(), TriggerType.SUCCESS, player);
             // 打开开始撬锁时的目标箱子（判定时点击的可能是任意方块 / 空气）
             Block target = session.getTarget();
             if (target != null && target.getType() == Material.CHEST) {
@@ -251,6 +287,8 @@ public class ChestListener implements Listener {
             }
         } else {
             Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
+            triggerManager.fire(TriggerType.FAIL, new TriggerContext(player, BlockLocation.from(session.getTarget())));
+            fireLockTrigger(session.getTarget(), TriggerType.FAIL, player);
         }
         gameManager.endGame(player);
     }
@@ -274,6 +312,12 @@ public class ChestListener implements Listener {
     @EventHandler
     public void onSneak(PlayerToggleSneakEvent event) {
         if (event.isSneaking() && gameManager.isPlaying(event.getPlayer())) {
+            GameSession session = gameManager.getSession(event.getPlayer());
+            if (session != null) {
+                triggerManager.fire(TriggerType.CANCEL,
+                        new TriggerContext(event.getPlayer(), BlockLocation.from(session.getTarget())));
+                fireLockTrigger(session.getTarget(), TriggerType.CANCEL, event.getPlayer());
+            }
             gameManager.endGame(event.getPlayer());
             Messages.send(event.getPlayer(), Messages.CANCEL_PICKING, Messages.CANCEL_PICKING_FORMAT);
         }

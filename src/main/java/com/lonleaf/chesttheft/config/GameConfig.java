@@ -12,9 +12,12 @@ public class GameConfig {
     private final int cooldownSeconds;
     private final int accessDurationSeconds;
     private final int accessOnceWindowSeconds;
+    private final boolean interruptDamage;
+    private final double interruptMoveRange;
 
     private GameConfig(String name, int barLength, int redLength, int moveInterval, int timeoutSeconds,
-                       int cooldownSeconds, int accessDurationSeconds, int accessOnceWindowSeconds) {
+                       int cooldownSeconds, int accessDurationSeconds, int accessOnceWindowSeconds,
+                       boolean interruptDamage, double interruptMoveRange) {
         this.name = name;
         this.barLength = barLength;
         this.redLength = redLength;
@@ -23,6 +26,8 @@ public class GameConfig {
         this.cooldownSeconds = cooldownSeconds;
         this.accessDurationSeconds = accessDurationSeconds;
         this.accessOnceWindowSeconds = accessOnceWindowSeconds;
+        this.interruptDamage = interruptDamage;
+        this.interruptMoveRange = interruptMoveRange;
     }
 
     /** 从配置段解析小游戏配置，缺失键使用默认值并做范围约束（null 表示全用默认值）。 */
@@ -38,7 +43,9 @@ public class GameConfig {
                 Math.max(1, section == null ? 15 : section.getInt("timeout", 15)),
                 Math.max(0, section == null ? 3 : section.getInt("cooldown", 3)),
                 Math.max(0, section == null ? 60 : section.getInt("access-duration", 60)),
-                Math.max(1, section == null ? 60 : section.getInt("access-once-window", 60))
+                Math.max(1, section == null ? 60 : section.getInt("access-once-window", 60)),
+                section == null || section.getBoolean("interrupt-damage", true),
+                section == null ? 3.0 : section.getDouble("interrupt-move-range", 3.0)
         );
     }
 
@@ -79,5 +86,15 @@ public class GameConfig {
     /** 一次性打开机会的有效窗口（秒）：access-duration 为 0 时生效。 */
     public int getAccessOnceWindowSeconds() {
         return accessOnceWindowSeconds;
+    }
+
+    /** 撬锁中受到伤害是否中断撬锁。 */
+    public boolean isInterruptDamage() {
+        return interruptDamage;
+    }
+
+    /** 撬锁中移动超过该范围（方块）中断撬锁；0 或负值表示不限制移动。 */
+    public double getInterruptMoveRange() {
+        return interruptMoveRange;
     }
 }

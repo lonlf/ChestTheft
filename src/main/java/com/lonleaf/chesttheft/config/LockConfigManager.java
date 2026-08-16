@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 不同等级锁的小游戏配置（lock 文件夹下全部 yml）：数字等级 → GameConfig；等级 0 定义时覆盖默认配置。 */
+/** 不同等级锁的小游戏配置（locklevel 文件夹下全部 yml）：数字等级 → GameConfig；等级 0 定义时覆盖默认配置。 */
 public class LockConfigManager {
     private final JavaPlugin plugin;
     private final File lockDir;
@@ -21,7 +21,7 @@ public class LockConfigManager {
 
     public LockConfigManager(JavaPlugin plugin, GameConfig defaultConfig) {
         this.plugin = plugin;
-        this.lockDir = new File(plugin.getDataFolder(), "lock");
+        this.lockDir = new File(plugin.getDataFolder(), "locklevel");
         this.defaultConfig = defaultConfig;
         saveDefault();
         load();
@@ -32,11 +32,11 @@ public class LockConfigManager {
         this.defaultConfig = defaultConfig;
     }
 
-    /** 保存默认模板 lock.yml（仅当 lock 目录下没有任何 yml 时创建）。 */
+    /** 保存默认模板 lock.yml（仅当 locklevel 目录下没有任何 yml 时创建）。 */
     private void saveDefault() {
         File[] files = lockDir.listFiles((dir, name) -> name.endsWith(".yml"));
         if (files == null || files.length == 0) {
-            plugin.saveResource("lock/lock.yml", false);
+            plugin.saveResource("locklevel/lock.yml", false);
         }
     }
 
@@ -71,7 +71,7 @@ public class LockConfigManager {
         }
     }
 
-    /** 获取指定等级的小游戏配置：等级 0 取配置文件中定义的 0 级配置（未定义时用默认配置）；未配置的正等级取最接近的更低可用等级，无更低则取更高，都没有时返回默认配置。 */
+    /** 获取指定等级的小游戏配置：0 级取配置文件定义的 0 级（未定义用默认）；未配置的正等级就近回退，无可用时用默认。 */
     public GameConfig getGameConfig(int level) {
         if (level <= 0) {
             GameConfig zero = configs.get(0);
@@ -85,7 +85,7 @@ public class LockConfigManager {
         return nearest == null ? defaultConfig : configs.get(nearest);
     }
 
-    /** 锁等级是否在配置文件中定义（精确匹配）；等级 0 恒视为已定义（默认配置存在，定义 0 级时覆盖）。 */
+    /** 锁等级是否在配置文件中定义；等级 0 恒视为已定义（未定义时用默认配置兜底）。 */
     public boolean isLevelConfigured(int level) {
         return level <= 0 || configs.containsKey(level);
     }

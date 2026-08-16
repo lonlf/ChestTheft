@@ -49,6 +49,7 @@ public class Messages {
     public static volatile String FAIL;
     public static volatile String START_PICKING;
     public static volatile String CANCEL_PICKING;
+    public static volatile String PICK_INTERRUPTED;
     public static volatile String RULE;
     public static volatile String LOCKED_IT;
     public static volatile String CHEST_LOCKED;
@@ -93,6 +94,7 @@ public class Messages {
     public static volatile String FAIL_FORMAT;
     public static volatile String START_PICKING_FORMAT;
     public static volatile String CANCEL_PICKING_FORMAT;
+    public static volatile String PICK_INTERRUPTED_FORMAT;
     public static volatile String LOCKED_IT_FORMAT;
     public static volatile String CHEST_LOCKED_FORMAT;
     public static volatile String GAME_TIMEOUT_FORMAT;
@@ -148,6 +150,9 @@ public class Messages {
     public static volatile String LOG_LOCK_LEVEL_FALLBACK_DEFAULT;
     public static volatile String LOG_LOCK_APPLIED;
     public static volatile String LOG_PICKLOCK_START_DEBUG;
+    public static volatile String LOG_TRIGGER_INVALID_TYPE;
+    public static volatile String LOG_TRIGGER_REF_MISSING;
+    public static volatile String LOG_ACTION_INVALID_TYPE;
 
     // ==================== 初始化 ====================
 
@@ -246,6 +251,7 @@ public class Messages {
         FAIL_FORMAT = formats.getOrDefault("pickingFail", "message");
         START_PICKING_FORMAT = formats.getOrDefault("pickingStart", "message");
         CANCEL_PICKING_FORMAT = formats.getOrDefault("pickingCancel", "message");
+        PICK_INTERRUPTED_FORMAT = formats.getOrDefault("pickingInterrupt", "message");
         LOCKED_IT_FORMAT = formats.getOrDefault("lockSuccess", "title");
         CHEST_LOCKED_FORMAT = formats.getOrDefault("chestLocked", "message");
         GAME_TIMEOUT_FORMAT = formats.getOrDefault("pickingTimeout", "message");
@@ -460,6 +466,7 @@ public class Messages {
         FAIL = messages.getOrDefault("fail", "&cPicklock failed!");
         START_PICKING = messages.getOrDefault("startPicking", "&aStart picking!");
         CANCEL_PICKING = messages.getOrDefault("cancelPicking", "&aPicklocking cancelled!");
+        PICK_INTERRUPTED = messages.getOrDefault("pickInterrupted", "&cPicklocking interrupted!");
         RULE = messages.getOrDefault("rule", "&aPicklock started! Click when the green cursor is inside the red zone!");
         LOCKED_IT = messages.getOrDefault("lockedIt", "&aLocked successfully");
         CHEST_LOCKED = messages.getOrDefault("chestLocked", "&cThis chest is locked!");
@@ -526,6 +533,9 @@ public class Messages {
         LOG_LOCK_LEVEL_FALLBACK_DEFAULT = messages.getOrDefault("logLockLevelFallbackDefault", "Lock level {0} not configured and no available level, using default config");
         LOG_LOCK_APPLIED = messages.getOrDefault("logLockApplied", "Player {0} locked {1} (level {2})");
         LOG_PICKLOCK_START_DEBUG = messages.getOrDefault("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
+        LOG_TRIGGER_INVALID_TYPE = messages.getOrDefault("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
+        LOG_TRIGGER_REF_MISSING = messages.getOrDefault("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
+        LOG_ACTION_INVALID_TYPE = messages.getOrDefault("logActionInvalidType", "Invalid action type '{0}'");
     }
 
     /**
@@ -549,6 +559,7 @@ public class Messages {
             map.put("fail", "&c撬锁失败！");
             map.put("startPicking", "&a开始撬锁！");
             map.put("cancelPicking", "&a已取消撬锁！");
+            map.put("pickInterrupted", "&c撬锁被中断！");
             map.put("rule", "&a撬锁开始！当绿色光标走到红色区域时点击鼠标！");
             map.put("lockedIt", "&a上锁成功");
             map.put("chestLocked", "&c这个箱子已上锁！");
@@ -608,11 +619,14 @@ public class Messages {
             map.put("logLockLevelFallbackDefault", "锁等级 {0} 未配置且无可用等级，已回退使用默认配置");
             map.put("logLockApplied", "玩家 {0} 已上锁 {1}（等级 {2}）");
             map.put("logPicklockStartDebug", "玩家 {0} 开始撬锁 {1}（锁等级 {2}，撬锁器等级 {3}，生效等级 {4}）");
+            map.put("logTriggerInvalidType", "无效的触发器类型 '{0}'（trigger {1} in {2}）");
+            map.put("logActionInvalidType", "无效的动作类型 '{0}'");
         } else {
             map.put("success", "&aPicklock successful!");
             map.put("fail", "&cPicklock failed!");
             map.put("startPicking", "&aStart picking!");
             map.put("cancelPicking", "&aPicklocking cancelled!");
+            map.put("pickInterrupted", "&cPicklocking interrupted!");
             map.put("rule", "&aPicklock started! Click when the green cursor is inside the red zone!");
             map.put("lockedIt", "&aLocked successfully");
             map.put("chestLocked", "&cThis chest is locked!");
@@ -673,6 +687,9 @@ public class Messages {
             map.put("logLockLevelFallbackDefault", "Lock level {0} not configured and no available level, using default config");
             map.put("logLockApplied", "Player {0} locked {1} (level {2})");
             map.put("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
+            map.put("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
+            map.put("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
+            map.put("logActionInvalidType", "Invalid action type '{0}'");
         }
         return map;
     }

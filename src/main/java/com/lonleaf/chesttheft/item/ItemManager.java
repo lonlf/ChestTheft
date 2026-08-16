@@ -2,6 +2,7 @@ package com.lonleaf.chesttheft.item;
 
 import com.lonleaf.chesttheft.model.BlockLocation;
 import org.bukkit.ChatColor;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -104,5 +105,30 @@ public class ItemManager {
 
     public boolean isPairedTo(ItemStack item, BlockLocation location) {
         return tagger.isPairedTo(item, location);
+    }
+
+    /** 序列化锁物品定义中配置的触发器组为 YAML 字符串，未配置时返回 null。 */
+    public String serializeLockTriggers(ItemStack item) {
+        String id = tagger.getId(item);
+        if (id == null) {
+            return null;
+        }
+        ItemDefinition def = configManager.getDefinition(id);
+        if (def == null || def.getTriggers() == null) {
+            return null;
+        }
+        YamlConfiguration tmp = new YamlConfiguration();
+        tmp.set("triggers", def.getTriggers());
+        return tmp.saveToString();
+    }
+
+    /** 写入锁物品的触发器配置标签。 */
+    public void setLockTrigger(ItemStack item, String data) {
+        tagger.setLockTrigger(item, data);
+    }
+
+    /** 读取锁物品的触发器配置标签，未配置时返回 null。 */
+    public String getLockTrigger(ItemStack item) {
+        return tagger.getLockTrigger(item);
     }
 }
