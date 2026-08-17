@@ -53,8 +53,8 @@ public class LootChestManager {
     }
 
     /**
-     * 创建战利品箱：合并配置物品与（可选）自然掉落，按 display-type 选择展示实体或真实箱子方块。
-     * 物品为空或无法放置时返回 null（调用方不做处理）。
+     * 创建战利品箱：合并配置物品与（可选）自然掉落，按 display-type 选择展示方式；
+     * 物品为空或无法放置时返回 null。
      */
     public LootChest createChest(Location location, List<ItemStack> drops, LootChestProfile profile) {
         List<ItemStack> items = new ArrayList<>();
@@ -119,7 +119,6 @@ public class LootChestManager {
         int index = 0;
         for (ItemStack item : items) {
             if (index >= inventory.getSize()) {
-                // 超出箱子容量的物品直接掉落在地面上
                 block.getWorld().dropItemNaturally(block.getLocation().clone().add(0.5, 0.5, 0.5), item);
             } else {
                 inventory.setItem(index++, item);
@@ -213,9 +212,8 @@ public class LootChestManager {
     }
 
     /**
-     * 区块加载同步（重启或区块重载后调用）：
-     * display 模式的纯客户端实体服务端不保存，重启后视觉不保留，无需同步（玩家进服/换世界由 syncAllToPlayer 重发）；
-     * block 模式根据方块 PDC 恢复容器物品栏箱子（真实方块随区块保存，物品不会丢失）。
+     * 区块加载同步：display 模式纯客户端实体重启后不保留，无需同步；
+     * block 模式根据方块 PDC 恢复容器物品栏箱子（真实方块随区块保存）。
      */
     public void syncFromChunk(Chunk chunk) {
         for (BlockState state : chunk.getTileEntities()) {
@@ -234,8 +232,7 @@ public class LootChestManager {
     }
 
     /**
-     * 玩家进服/换世界后重发其所在世界的全部活动 display 箱子：
-     * 纯客户端实体由客户端持有，需逐玩家重发 SpawnEntity/EntityMetadata 包（复用原有实体 ID）；
+     * 玩家进服/换世界后重发其所在世界的全部活动 display 箱子（复用原有实体 ID）；
      * block 模式为真实方块，无需处理。
      */
     public void syncAllToPlayer(Player player) {

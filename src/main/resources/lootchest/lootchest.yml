@@ -2,14 +2,18 @@
 # 战利品箱配置（Loot Chest Profiles）
 #
 # 本目录（lootchest/）下的全部 yml 都会被加载，档案 ID（顶层键）为主键。
-# 生物死亡时按其类型名（如 ZOMBIE、SKELETON、CREEPER）匹配档案；
-# 未精确匹配到任何档案时回退使用 default 档案；都没有时保持原版自然掉落。
+# 生物死亡时通过档案下的 drops 配置项匹配：
+#   drops:
+#     - zombie 0.01                     # Bukkit 实体类型名（小写） 概率
+#     - "mythicmobs:example_mob 1"      # 外部插件实体（如 MythicMobs）标识符 概率
+# 匹配规则：遍历全部档案的 drops 条目，找到第一个匹配的即使用该档案。
+# 无匹配时保持原版自然掉落。
 #
 # 档案中物品支持三种写法：
 #   - id: 引用 items/ 文件夹中的物品定义（如 id: key001）
 #   - id: 引用外部插件物品（如 id: "MMOItems:SWORD:example_item"）
 #   - material: 直接使用原版材质（如 material: DIAMOND）
-# 可选字段：amount（数量，默认 1）、name（显示名）、lore（Lore 行）、customModelData
+# 可选字段：amount（数量，默认 1）、chance（生成概率 0~1，默认 1）、name（显示名）、lore（Lore 行）、customModelData
 #
 # 外部插件物品 id 格式（不区分大小写）：
 #   ItemsAdder:   id: "ItemsAdder:<物品ID>"
@@ -21,7 +25,7 @@
 #   CraftEngine:  id: "CraftEngine:<物品ID>"
 # ============================================
 
-# 默认档案：所有未单独配置的生物使用此配置
+# 默认档案：其他用途（如命令）回退使用
 default:
   # 箱子界面标题（支持 & 颜色码）
   title: "&8战利品箱"
@@ -44,6 +48,7 @@ default:
   items:
     - material: GOLD_INGOT
       amount: 3
+      chance: 1
     - material: DIAMOND
       amount: 1
       name: "&b闪亮的钻石"
@@ -51,7 +56,9 @@ default:
         - "&7来自战利品箱的稀有掉落"
     - id: key001
       amount: 1
-
+  drops:
+    - zombie 0.01
+    - "mythicmobs:example_mob 1"
 # 示例：单独为僵尸配置（同名生物类型均可单独配置）
 #zombie:
 #  title: "&c僵尸的战利品箱"

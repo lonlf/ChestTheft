@@ -5,19 +5,24 @@ import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.item.ItemManager;
 import org.bukkit.Color;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
+import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/** 战利品箱配置档案：界面标题、展示材质、是否装入自然掉落、生成概率、撬锁等级、开箱动画与额外物品列表。 */
+/**
+ * 战利品箱配置档案：标题、展示材质、掉落、撬锁等级、开箱特效、物品列表与掉落映射（drops）。
+ */
 public class LootChestProfile {
     private final String id;
     private final String title;
@@ -27,10 +32,12 @@ public class LootChestProfile {
     private final int level;
     private final List<LootChestItem> items;
     private final OpenEffectionConfig openEffection;
+    /** 掉落实体映射表：每个条目为 "实体标识符 概率"。 */
+    private final List<DropEntry> drops;
 
     private LootChestProfile(String id, String title, Material displayMaterial,
                              boolean includeDrops, double chance, int level, List<LootChestItem> items,
-                             OpenEffectionConfig openEffection) {
+                             OpenEffectionConfig openEffection, List<DropEntry> drops) {
         this.id = id;
         this.title = title;
         this.displayMaterial = displayMaterial;
@@ -39,6 +46,7 @@ public class LootChestProfile {
         this.level = level;
         this.items = items;
         this.openEffection = openEffection;
+        this.drops = drops;
     }
 
     /** 从配置段解析档案；非法展示材质回退 CHEST 并告警，非法物品跳过。 */
@@ -63,13 +71,61 @@ public class LootChestProfile {
         }
         OpenEffectionConfig openEffection = OpenEffectionConfig.from(
                 section.getConfigurationSection("open-effects"), logger, id);
-        return new LootChestProfile(id, title, displayMaterial, includeDrops, chance, level, items, openEffection);
+        List<DropEntry> drops = parseDrops(section.getStringList("drops"), logger, id);
+        return new LootChestProfile(id, title, displayMaterial, includeDrops, chance, level, items, openEffection, drops);
+    }
+
+    /** 解析 drops 配置行列表，格式 "实体标识符 概率"。 */
+    private static List<DropEntry> parseDrops(List<String> raw, Logger logger, String profileId) {
+        if (raw == null || raw.isEmpty()) return Collections.emptyList();
+        List<DropEntry> result = new ArrayList<>(raw.size());
+        for (String line : raw) {
+            if (line == null || line.isBlank()) continue;
+            String trimmed = line.trim();
+            int lastSpace = trimmed.lastIndexOf(' ');
+            if (lastSpace < 0) {
+                logger.warning("战利品箱档案 '" + profileId + "' 的 drops 配置行 '" + trimmed + "' 格式错误，应为 '<实体标识> <概率>'");
+                continue;
+            }
+            String identifier = trimmed.substring(0, lastSpace).trim();
+            String probStr = trimmed.substring(lastSpace + 1).trim();
+            double probability;
+            try {
+                probability = Double.parseDouble(probStr);
+            } catch (NumberFormatException e) {
+                logger.warning("战利品箱档案 '" + profileId + "' 的 drops 配置行 '" + trimmed + "' 概率值无效");
+                continue;
+            }
+            result.add(new DropEntry(identifier, Math.max(0.0, Math.min(1.0, probability))));
+        }
+        return result;
+    }
+
+    /** 匹配某实体标识符是否在此档案的掉落映射中。 */
+    public boolean hasDrop(String entityIdentifier) {
+        for (DropEntry entry : drops) {
+            if (entry.entityIdentifier.equalsIgnoreCase(entityIdentifier)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 获取某实体在此档案中的掉落概率；未匹配返回 0。 */
+    public double getDropProbability(String entityIdentifier) {
+        for (DropEntry entry : drops) {
+            if (entry.entityIdentifier.equalsIgnoreCase(entityIdentifier)) {
+                return entry.probability;
+            }
+        }
+        return 0.0;
     }
 
     /** 构建档案中的全部额外物品；items 文件夹引用缺失的物品被跳过。 */
     public List<ItemStack> buildItems(ItemManager itemManager) {
         List<ItemStack> result = new ArrayList<>();
         for (LootChestItem item : items) {
+            if (Math.random() > item.getChance()) continue;
             ItemStack built = item.build(itemManager);
             if (built != null) {
                 result.add(built);
@@ -116,9 +172,34 @@ public class LootChestProfile {
         return openEffection;
     }
 
+    /** 该档案的掉落映射（drops）；可能为空。 */
+    public List<DropEntry> getDrops() {
+        return drops;
+    }
+
+    /** 掉落映射条目：关联实体标识符与对应概率。 */
+    public static class DropEntry {
+        private final String entityIdentifier;
+        private final double probability;
+
+        private DropEntry(String entityIdentifier, double probability) {
+            this.entityIdentifier = entityIdentifier;
+            this.probability = probability;
+        }
+
+        /** 实体标识符，如 "zombie"、"mythicmobs:example_mob"。 */
+        public String getEntityIdentifier() {
+            return entityIdentifier;
+        }
+
+        /** 掉落概率（0~1）。 */
+        public double getProbability() {
+            return probability;
+        }
+    }
+
     /**
-     * 开箱特效配置：发光、扬起尘土粒子与开箱音效三项独立可选，均使用单行字符串配置。
-     * 发光/粒子未配置则不启用该效果；音效未配置时默认 BLOCK_CHEST_OPEN（音量 1.0、音调 1.0）。
+     * 开箱特效配置：发光、粒子与音效三项独立可选，均使用单行字符串配置。
      */
     public static class OpenEffectionConfig {
         private final GlowConfig glow;
@@ -157,6 +238,37 @@ public class LootChestProfile {
                 return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
                 logger.warning("战利品箱档案 '" + profileId + "' 的 " + field + " 配置值 '" + value + "' 无效，已忽略");
+                return null;
+            }
+        }
+
+        /**
+         * 音效解析：1.21.3+ Sound 由枚举改为接口，优先按资源 key（Registry.SOUNDS）解析，
+         * 兼容旧枚举名与直接 key，旧版服务端回退 Enum.valueOf。
+         */
+        private static Sound parseSound(String value, Logger logger, String profileId) {
+            if (value == null || value.isBlank()) {
+                return null;
+            }
+            String trimmed = value.trim();
+            // 新版服务端：优先 Registry 按资源 key 解析
+            try {
+                String keyStr = trimmed.contains(":") ? trimmed : trimmed.toLowerCase(Locale.ROOT).replace('_', '.');
+                NamespacedKey key = NamespacedKey.fromString(keyStr);
+                if (key != null) {
+                    Sound sound = Registry.SOUNDS.get(key);
+                    if (sound != null) {
+                        return sound;
+                    }
+                }
+            } catch (Exception ignored) {
+                // 继续走枚举回退
+            }
+            // 旧版服务端：Sound 仍为枚举时按枚举名解析
+            try {
+                return Enum.valueOf(Sound.class, trimmed.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                logger.warning("战利品箱档案 '" + profileId + "' 的 open-effects sound type 配置值 '" + value + "' 无效，已忽略");
                 return null;
             }
         }
@@ -279,8 +391,7 @@ public class LootChestProfile {
                     return null;
                 }
                 String[] tokens = value.trim().split("\\s+");
-                Sound type = parseEnum(tokens[0], Sound.class, logger,
-                        "open-effects sound type", profileId);
+                Sound type = parseSound(tokens[0], logger, profileId);
                 if (type == null) {
                     type = Sound.BLOCK_CHEST_OPEN;
                 }

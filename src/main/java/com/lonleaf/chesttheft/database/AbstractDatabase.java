@@ -6,11 +6,13 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 
 import java.io.StringReader;
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Base64;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -63,22 +65,39 @@ public abstract class AbstractDatabase implements Database {
         }
     }
 
+    /**
+     * 物品序列化：优先 NBT 字节格式（Paper 反射 API，保留 PDC），失败时回退 Yaml（兼容旧数据）。
+     */
     protected static String serializeItem(ItemStack item) {
-        if (item == null) {
+        if (item == null || item.getType().isAir()) {
             return "";
         }
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("item", item);
-        return config.saveToString();
+        try {
+            Method m = ItemStack.class.getMethod("serializeAsBytes");
+            byte[] bytes = (byte[]) m.invoke(item);
+            return "NBT:" + Base64.getEncoder().encodeToString(bytes);
+        } catch (Exception e) {
+            YamlConfiguration config = new YamlConfiguration();
+            config.set("item", item);
+            return config.saveToString();
+        }
     }
 
-    /** 从 YAML 字符串还原物品，空数据返回 null。 */
+    /** 从存储字符串还原物品，空数据返回 null；兼容 NBT 字节与旧版 Yaml 两种格式。 */
     protected static ItemStack deserializeItem(String data) {
         if (data == null || data.isEmpty()) {
             return null;
         }
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(new StringReader(data));
-        return config.getItemStack("item");
+        try {
+            if (data.startsWith("NBT:")) {
+                Method m = ItemStack.class.getMethod("deserializeBytes", byte[].class);
+                return (ItemStack) m.invoke(null, (Object) Base64.getDecoder().decode(data.substring(4)));
+            }
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(new StringReader(data));
+            return config.getItemStack("item");
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override
@@ -99,7 +118,7 @@ public abstract class AbstractDatabase implements Database {
     }
 
     @Override
-    public void lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token, int level) {
+    public boolean lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token, int level) {
         String sql = "INSERT INTO " + TABLE + " (world, x, y, z, lock_item, locker_uuid, lock_token, lock_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
@@ -110,10 +129,11 @@ public abstract class AbstractDatabase implements Database {
             ps.setString(6, lockerUuid);
             ps.setString(7, token);
             ps.setInt(8, level);
-            ps.executeUpdate();
+            return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             // UNIQUE 约束冲突说明已上锁，属正常情况
             if (debug) logger.log(Level.INFO, Messages.getLog(Messages.LOG_DB_LOCK_DUP, location), e);
+            return false;
         }
     }
 

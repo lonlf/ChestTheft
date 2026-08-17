@@ -74,6 +74,9 @@ public class Messages {
     public static volatile String PAIR_NOT_LOCKER;
     public static volatile String KEY_NOT_MATCHED;
     public static volatile String KEY_CHANGED;
+    public static volatile String CHEST_PROTECTED;
+    public static volatile String CHEST_PROTECTED_LOCK_DENIED;
+    public static volatile String CHEST_PROTECTED_ACCESS_DENIED;
     public static volatile String PLAYER_ONLY;
     public static volatile String RELOADED;
     public static volatile String USAGE;
@@ -119,6 +122,9 @@ public class Messages {
     public static volatile String PAIR_NOT_LOCKER_FORMAT;
     public static volatile String KEY_NOT_MATCHED_FORMAT;
     public static volatile String KEY_CHANGED_FORMAT;
+    public static volatile String CHEST_PROTECTED_FORMAT;
+    public static volatile String CHEST_PROTECTED_LOCK_DENIED_FORMAT;
+    public static volatile String CHEST_PROTECTED_ACCESS_DENIED_FORMAT;
     public static volatile String PLAYER_ONLY_FORMAT;
     public static volatile String RELOADED_FORMAT;
     public static volatile String USAGE_FORMAT;
@@ -161,15 +167,11 @@ public class Messages {
     public static volatile String LOG_LOOT_CHEST_INVALID_MATERIAL;
     public static volatile String LOG_LOOT_CHEST_ITEM_INVALID;
     public static volatile String LOG_LOOT_CHEST_NOT_CONTAINER;
+    public static volatile String LOG_PROTECTION_AUTO_UNLOCK;
 
     // ==================== 初始化 ====================
 
-    /**
-     * 初始化消息系统：创建 lang 目录、提取内置语言文件并加载指定语言。
-     *
-     * @param dataDirectory 插件数据目录
-     * @param lang          语言代码（如 "zh_cn"、"en_gb"）
-     */
+    /** 初始化消息系统：创建 lang 目录、提取内置语言文件并加载指定语言。 */
     public static void init(Path dataDirectory, String lang) {
         langDir = dataDirectory.resolve("lang");
         currentLang = (lang != null && !lang.isBlank()) ? lang : "en_gb";
@@ -194,12 +196,7 @@ public class Messages {
         LOGGER.info("Messages reloaded (lang=" + currentLang + ")");
     }
 
-    /**
-     * 获取玩家消息：& 颜色码转 § 并替换 {0}, {1} 等占位符。
-     *
-     * @param template 消息模板（通常传静态字段，如 Messages.COOLDOWN）
-     * @param args     占位符参数
-     */
+    /** 获取玩家消息：& 颜色码转 § 并替换 {0}, {1} 等占位符。 */
     public static String get(String template, Object... args) {
         if (template == null) {
             return "";
@@ -217,16 +214,7 @@ public class Messages {
         return format(template, args);
     }
 
-    /**
-     * 按配置的显示方式发送玩家消息：
-     * message（聊天）/ actionbar（动作栏）/ title（标题），
-     * 非玩家或未知格式回退为聊天消息。
-     *
-     * @param sender 接收者（Player 支持全部显示方式，其余仅聊天消息）
-     * @param text   消息模板（通常传静态字段，如 Messages.CHEST_LOCKED）
-     * @param format 显示方式（通常传对应静态格式字段，如 Messages.CHEST_LOCKED_FORMAT）
-     * @param args   占位符参数
-     */
+    /** 按配置的显示方式发送玩家消息：message/actionbar/title，非玩家或未知格式回退聊天。 */
     public static void send(CommandSender sender, String text, String format, Object... args) {
         String msg = get(text, args);
         if (!(sender instanceof Player player) || format == null || format.equalsIgnoreCase("message")) {
@@ -241,10 +229,7 @@ public class Messages {
         }
     }
 
-    /**
-     * 应用 config.yml 中 message-format 小节的显示方式配置（消息键 → message/actionbar/title）。
-     * 应在语言加载完成后调用；reload 时需再次调用。
-     */
+    /** 应用 message-format 小节显示方式配置；应在语言加载完成后调用，reload 时需再次调用。 */
     public static void applyFormats(Map<String, String> formatMap) {
         formats.clear();
         if (formatMap != null) {
@@ -284,6 +269,9 @@ public class Messages {
         PAIR_NOT_LOCKER_FORMAT = formats.getOrDefault("pairNotLocker", "message");
         KEY_NOT_MATCHED_FORMAT = formats.getOrDefault("keyNotMatched", "message");
         KEY_CHANGED_FORMAT = formats.getOrDefault("keyChanged", "message");
+        CHEST_PROTECTED_FORMAT = formats.getOrDefault("chestProtected", "message");
+        CHEST_PROTECTED_LOCK_DENIED_FORMAT = formats.getOrDefault("chestProtectedLockDenied", "message");
+        CHEST_PROTECTED_ACCESS_DENIED_FORMAT = formats.getOrDefault("chestProtectedAccessDenied", "message");
         PLAYER_ONLY_FORMAT = formats.getOrDefault("playerOnly", "message");
         // USAGE 与 RELOADED 仅管理员可见，固定使用聊天消息，不参与显示方式配置
         USAGE_FORMAT = "message";
@@ -313,8 +301,7 @@ public class Messages {
     }
 
     /**
-     * 按系统 Locale 选择语言（i18n 父子匹配链）：
-     * 完整 Locale（zh_CN→zh_cn, en_GB→en_gb）→ 语言主码（zh/en）→ 语言族回退（zh_tw→zh_cn, en_us→en_gb）→ 默认 en_gb。
+     * 按系统 Locale 选择语言（i18n 匹配链）：完整 Locale → 语言主码 → 语言族回退 → 默认 en_gb。
      */
     public static String detectSystemLanguage() {
         Locale def = Locale.getDefault();
@@ -336,11 +323,7 @@ public class Messages {
         return "en_gb";
     }
 
-    /**
-     * 语言族回退：在外部 lang/ 目录与内置语言中查找以语言主码开头（{@code <main>_}）的语言文件。
-     *
-     * @return 匹配的语言代码，无匹配返回 null
-     */
+    /** 语言族回退：查找以语言主码开头（{@code <main>_}）的语言文件。 */
     private static String findLanguageFamily(String main) {
         if (main == null || main.isEmpty()) {
             return null;
@@ -502,6 +485,9 @@ public class Messages {
         PAIR_NOT_LOCKER = messages.getOrDefault("pairNotLocker", "&cOnly the locker can pair a key with this lock!");
         KEY_NOT_MATCHED = messages.getOrDefault("keyNotMatched", "&cThis key does not match this lock!");
         KEY_CHANGED = messages.getOrDefault("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
+        CHEST_PROTECTED = messages.getOrDefault("chestProtected", "&cThis chest is protected by LWC/Bolt! The lock has been removed.");
+        CHEST_PROTECTED_LOCK_DENIED = messages.getOrDefault("chestProtectedLockDenied", "&cThis chest is protected by LWC/Bolt! You cannot lock it.");
+        CHEST_PROTECTED_ACCESS_DENIED = messages.getOrDefault("chestProtectedAccessDenied", "&cThis chest is protected by LWC/Bolt! You cannot operate it.");
         PLAYER_ONLY = messages.getOrDefault("playerOnly", "&cThis command can only be used by players!");
         RELOADED = messages.getOrDefault("reloaded", "&aConfiguration reloaded!");
         USAGE = messages.getOrDefault("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft reload");
@@ -553,6 +539,7 @@ public class Messages {
         LOG_LOOT_CHEST_INVALID_MATERIAL = messages.getOrDefault("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
         LOG_LOOT_CHEST_ITEM_INVALID = messages.getOrDefault("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
         LOG_LOOT_CHEST_NOT_CONTAINER = messages.getOrDefault("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
+        LOG_PROTECTION_AUTO_UNLOCK = messages.getOrDefault("logProtectionAutoUnlock", "Chest {0} is protected by LWC/Bolt, lock automatically removed");
     }
 
     /**
@@ -600,6 +587,9 @@ public class Messages {
             map.put("pairSuccess", "&a钥匙已与这把锁配对！");
             map.put("pairNotLocker", "&c该锁还没有配对的钥匙，只有上锁者可以配对钥匙！");
             map.put("keyNotMatched", "&c这把钥匙与这把锁不匹配！");
+            map.put("chestProtected", "&c该箱子受 LWC/Bolt 保护，已卸下锁");
+            map.put("chestProtectedLockDenied", "&c该箱子受 LWC/Bolt 保护，无法上锁");
+            map.put("chestProtectedAccessDenied", "&c该箱子受 LWC/Bolt 保护，无法操作");
             map.put("playerOnly", "&c该命令只能由玩家执行！");
             map.put("reloaded", "&a配置已重载");
             map.put("usage", "&e用法:\n&e  /chesttheft give <玩家> <物品ID> [数量]\n&e  /chesttheft setitem <物品ID>\n&e  /chesttheft check\n&e  /chesttheft reload");
@@ -644,6 +634,7 @@ public class Messages {
             map.put("logLootChestInvalidMaterial", "档案 {0} 的展示材质无效: {1}，使用默认值");
             map.put("logLootChestItemInvalid", "档案 {0} 中存在无效的战利品物品: {1}，已跳过");
             map.put("logLootChestNotContainer", "在 {0} 放置战利品箱失败: {1} 不是容器，已跳过生成");
+            map.put("logProtectionAutoUnlock", "箱子 {0} 受 LWC/Bolt 保护，已自动卸下锁");
         } else {
             map.put("success", "&aPicklock successful!");
             map.put("fail", "&cPicklock failed!");
@@ -674,6 +665,9 @@ public class Messages {
             map.put("pairNotLocker", "&cOnly the locker can pair a key with this lock!");
             map.put("keyNotMatched", "&cThis key does not match this lock!");
             map.put("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
+            map.put("chestProtected", "&cThis chest is protected by LWC/Bolt! The lock has been removed.");
+            map.put("chestProtectedLockDenied", "&cThis chest is protected by LWC/Bolt! You cannot lock it.");
+            map.put("chestProtectedAccessDenied", "&cThis chest is protected by LWC/Bolt! You cannot operate it.");
             map.put("playerOnly", "&cThis command can only be used by players!");
             map.put("reloaded", "&aConfiguration reloaded!");
             map.put("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft reload");
@@ -719,6 +713,7 @@ public class Messages {
             map.put("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
             map.put("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
             map.put("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
+            map.put("logProtectionAutoUnlock", "Chest {0} is protected by LWC/Bolt, lock automatically removed");
         }
         return map;
     }

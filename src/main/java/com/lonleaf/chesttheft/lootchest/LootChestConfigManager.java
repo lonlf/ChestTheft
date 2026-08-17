@@ -64,10 +64,14 @@ public class LootChestConfigManager {
         }
     }
 
-    /** 按生物类型名取档案：精确匹配 → default 回退；都无时返回 null（仅装入自然掉落）。 */
-    public LootChestProfile getProfile(String entityTypeName) {
-        LootChestProfile exact = profiles.get(entityTypeName);
-        return exact != null ? exact : profiles.get("default");
+    /** 按实体标识符遍历所有档案的 drops 映射进行匹配；未匹配返回 null。 */
+    public LootChestProfile getProfileByEntity(String entityIdentifier) {
+        for (LootChestProfile profile : profiles.values()) {
+            if (profile.hasDrop(entityIdentifier)) {
+                return profile;
+            }
+        }
+        return null;
     }
 
     /** 按档案 ID 精确匹配（命令使用），不存在时返回 null。 */

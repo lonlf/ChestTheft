@@ -27,12 +27,11 @@ example_interrupted:
       type: message
       value: "&c撬锁中断！"
 
+# 注意：撬锁成功提示已由插件内置发送（messages.success），
+# 无需在 success 触发器里再配 message 动作，否则会重复提示。
 example_success:
   type: success
   actions:
-    msg1:
-      type: message
-      value: "&a撬锁成功！"
     snd1:
       type: sound
       value:

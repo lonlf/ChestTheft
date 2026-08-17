@@ -118,6 +118,8 @@ public class PluginConfig {
     private volatile int lootChestExpireTimeOpened;
     private volatile double lootChestInteractionRange;
     private volatile List<String> lootChestExcludedWorlds;
+    /** 受 LWC / Bolt 保护的箱子是否启用本插件撬锁功能；false 时不可上锁，已上锁则保护所有者交互时自动卸锁。 */
+    private volatile boolean protectionPickingEnabled;
     /** 各消息显示方式配置（message-format 小节）：消息键 → message/actionbar/title/subtitle。 */
     private final Map<String, String> messageFormats = new HashMap<>();
 
@@ -163,10 +165,7 @@ public class PluginConfig {
         load();
     }
 
-    /**
-     * 配置自动升级：config-version 落后时按模板追加缺失键（保留已有内容与注释），
-     * 更新版本号并原子写回。
-     */
+    /** 配置自动升级：config-version 落后时按模板追加缺失键（保留已有内容）并原子写回。 */
     private void upgradeConfigFile() {
         FileConfiguration template;
         try (InputStream in = plugin.getResource("config.yml")) {
@@ -300,6 +299,7 @@ public class PluginConfig {
         lootChestExpireTimeOpened = Math.max(0, config.getInt("lootchest.expire-time-opened", 300));
         lootChestInteractionRange = Math.max(1.0, config.getDouble("lootchest.interaction-range", 4.0));
         lootChestExcludedWorlds = config.getStringList("lootchest.worlds.exclude");
+        protectionPickingEnabled = config.getBoolean("protection.picking-enabled", false);
         debug = config.getBoolean("debug", false);
 
         // 语言：未设置时用系统检测值兜底（首启时由 applySystemLanguage 写回文件）
@@ -435,6 +435,11 @@ public class PluginConfig {
     /** 不生成战利品箱的世界名列表。 */
     public List<String> getLootChestExcludedWorlds() {
         return lootChestExcludedWorlds;
+    }
+
+    /** 受 LWC / Bolt 保护的箱子是否启用本插件撬锁功能。 */
+    public boolean isProtectionPickingEnabled() {
+        return protectionPickingEnabled;
     }
 
     /** 解析战利品箱展示方式：display / block，非法值回退为 display。 */

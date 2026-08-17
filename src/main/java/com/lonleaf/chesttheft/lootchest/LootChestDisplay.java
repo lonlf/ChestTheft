@@ -32,12 +32,15 @@ import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
 
 /**
- * 战利品箱展示工具：
- * display 模式基于 EntityLib 生成/移除纯客户端展示实体（BlockDisplay）与交互载体（Interaction），
- * block 模式放置/移除真实箱子方块；另含 PacketEvents 发包特效（开箱发光/粒子/音效）。
+ * 战利品箱展示工具：display 模式纯客户端实体（BlockDisplay/Interaction）、block 模式真实方块与发包特效。
  */
 public final class LootChestDisplay {
 
@@ -62,9 +65,8 @@ public final class LootChestDisplay {
     }
 
     /**
-     * 生成交互载体（Interaction 实体）：BlockDisplay 的 hitbox 服务端固定且无法修改，客户端难以点击选中；
-     * 叠加一个纯客户端 Interaction 实体提供可点击 hitbox，宽高 1.0×1.0 覆盖整个方块、左右键均可交互。
-     * 玩家点击它发送 INTERACT_ENTITY 包（由收包监听反查箱子）。
+     * 生成交互载体：BlockDisplay 的 hitbox 服务端固定不可改，叠加纯客户端 Interaction 提供可点击 hitbox
+     * （宽高 1.0×1.0），玩家点击发送 INTERACT_ENTITY 包由收包监听反查箱子。
      */
     public static int spawnInteraction(Location location) {
         WrapperEntity entity = new WrapperEntity(EntityTypes.INTERACTION);
@@ -78,12 +80,10 @@ public final class LootChestDisplay {
     }
 
     /**
-     * 生成发光展示实体：手持钥匙时叠加在对应锁方块上的 BlockDisplay。
-     * 本体与锁方块同材质且复制其朝向（视觉无缝，避免朝向错位出现"两个箱子"），
-     * scale 微扩 1.001 防与真实方块 z-fighting，开启发光位并以 ARGB 指定 glow color override。
-     * 返回实体 ID，调用方负责在不再需要时移除。
+     * 生成发光展示实体：与锁方块同材质并复制朝向，scale 微扩 1.001 防 z-fighting，
+     * 仅对指定观众（钥匙持有者）可见；返回实体 ID。
      */
-    public static int spawnGlowDisplay(Block block, int argb) {
+    public static int spawnGlowDisplay(Block block, int argb, Collection<UUID> viewers) {
         WrapperEntity entity = new WrapperEntity(EntityTypes.BLOCK_DISPLAY);
         entity.consumeEntityMeta(BlockDisplayMeta.class, meta -> {
             meta.setTranslation(new Vector3f(-0.5f, 0f, -0.5f));
@@ -92,8 +92,31 @@ public final class LootChestDisplay {
             meta.setGlowing(true);
             meta.setGlowColorOverride(argb);
         });
-        spawnToWorld(entity, block.getLocation());
+        spawnTo(entity, block.getLocation(), viewers);
         return entity.getEntityId();
+    }
+
+    /**
+     * 同步发光展示实体的可见玩家集合（仅钥匙持有者可见）：
+     * 新增观众补发 spawn + metadata，不再可见的观众广播销毁；离线的旧观众无需处理（客户端已断开）。
+     */
+    public static void syncGlowViewers(int entityId, Collection<UUID> holders) {
+        WrapperEntity entity = getEntity(entityId);
+        if (entity == null) {
+            return;
+        }
+        Set<UUID> current = entity.getViewers();
+        Set<UUID> target = holders == null ? Collections.emptySet() : new HashSet<>(holders);
+        for (UUID viewer : target) {
+            if (!current.contains(viewer)) {
+                entity.addViewer(viewer);
+            }
+        }
+        for (UUID viewer : current) {
+            if (!target.contains(viewer) && Bukkit.getPlayer(viewer) != null) {
+                entity.removeViewer(viewer);
+            }
+        }
     }
 
     /**
@@ -135,6 +158,17 @@ public final class LootChestDisplay {
         if (world != null) {
             for (Player viewer : world.getPlayers()) {
                 entity.addViewer(viewer.getUniqueId());
+            }
+        }
+        entity.spawn(new com.github.retrooper.packetevents.protocol.world.Location(
+                location.getX() + 0.5, location.getY(), location.getZ() + 0.5, 0f, 0f));
+    }
+
+    /** 生成在方块中心底部，仅让指定玩家可见（纯客户端实体需逐玩家发包）。 */
+    private static void spawnTo(WrapperEntity entity, Location location, Collection<UUID> viewers) {
+        if (viewers != null) {
+            for (UUID viewer : viewers) {
+                entity.addViewer(viewer);
             }
         }
         entity.spawn(new com.github.retrooper.packetevents.protocol.world.Location(
@@ -195,8 +229,7 @@ public final class LootChestDisplay {
     }
 
     /**
-     * 在指定位置放置真实容器方块并标记 PDC；位置被占用时尝试上方一格，
-     * 均不可放置或非容器材质时返回 null（调用方放弃生成）。
+     * 放置真实容器方块并标记 PDC；位置被占用时尝试上方一格，均不可放置或非容器材质时返回 null。
      */
     public static Block placeChestBlock(Location location, Material material, NamespacedKey blockKey) {
         Block block = location.getBlock();
@@ -233,9 +266,8 @@ public final class LootChestDisplay {
     // ==================== 发包特效 ====================
 
     /**
-     * 按档案开箱特效配置播放：发光（EntityLib meta：发光位 + glow color override）、
-     * 扬起尘土粒子（SpawnParticle 包）与开箱音效（NamedSoundEffect 包）。
-     * 发光/粒子未配置则跳过对应效果；音效缺省 BLOCK_CHEST_OPEN，音量/音调按配置。
+     * 按档案开箱特效配置播放发光、扬起尘土粒子与开箱音效（PacketEvents 发包）；
+     * 未配置的项跳过，音效缺省 BLOCK_CHEST_OPEN。
      */
     public static void playOpenEffects(Plugin plugin, LootChest chest, Player player) {
         LootChestProfile profile = chest.getProfile();

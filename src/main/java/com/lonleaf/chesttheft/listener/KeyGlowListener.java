@@ -9,10 +9,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.inventory.InventoryHolder;
 
-/**
- * 钥匙发光与箱子开合联动：真实容器方块打开时移除发光展示实体
- * （避免原版开盖动画与静态展示实体错位），关闭后由 KeyGlowTask 下个对账周期恢复。
- */
+/** 钥匙发光与箱子开合联动：容器打开时移除发光实体（避免开盖动画错位），关闭后由 KeyGlowTask 恢复。 */
 public class KeyGlowListener implements Listener {
 
     private final KeyGlowTask keyGlowTask;

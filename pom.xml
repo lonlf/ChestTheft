@@ -218,5 +218,17 @@
             <version>6.10.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.popcraft</groupId>
+            <artifactId>bolt-bukkit</artifactId>
+            <version>1.1.33</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.griefcraft</groupId>
+            <artifactId>lwc</artifactId>
+            <version>2.2.9-dev</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>

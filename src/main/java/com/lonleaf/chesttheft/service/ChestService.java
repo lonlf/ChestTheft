@@ -18,9 +18,9 @@ public class ChestService {
         return database.isLocked(BlockLocation.from(block));
     }
 
-    /** 上锁：生成随机配对凭证并写入数据库（卸锁重上后旧钥匙凭证失效）。 */
-    public void lock(Block block, ItemStack lockItem, String lockerUuid, int level) {
-        database.lock(BlockLocation.from(block), lockItem, lockerUuid, UUID.randomUUID().toString(), level);
+    /** 上锁：生成随机配对凭证并写入数据库（卸锁重上后旧钥匙凭证失效）。返回是否上锁成功。 */
+    public boolean lock(Block block, ItemStack lockItem, String lockerUuid, int level) {
+        return database.lock(BlockLocation.from(block), lockItem, lockerUuid, UUID.randomUUID().toString(), level);
     }
 
     /** 返回上锁者 UUID，无记录时返回 null。 */

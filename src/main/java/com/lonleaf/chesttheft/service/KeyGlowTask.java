@@ -26,23 +26,15 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
-/**
- * 钥匙发光提示：玩家手持与某把上锁箱子配对值相等的钥匙时，周期性在箱子位置播放彩色粒子
- * （受 key.particle-enabled / particle-color / particle-radius 控制），
- * 并叠加一个发光展示实体（BlockDisplay，与锁方块同材质且朝向一致、视觉无缝，glow 轮廓为 key.glow-color；
- * 受 key.glow-enabled / glow-color / glow-radius 控制）使其醒目；粒子与发光可独立开关。
- * 箱子打开时发光实体被移除（避免开盖动画错位），关闭后恢复。
- * 判定与开锁一致（位置配对 + 凭证一致）。
- */
+/** 钥匙发光提示：手持匹配钥匙时周期播放粒子并叠加发光展示实体（仅持有者可见），开盖时移除、关闭后恢复。 */
 public class KeyGlowTask extends BukkitRunnable {
 
     private static final long INTERVAL_TICKS = 5L;
     private static final int PARTICLE_COUNT = 8;
     private static final double PARTICLE_OFFSET = 0.45;
     private static final float DUST_SIZE = 1.0f;
-    /** 粒子可见距离（对应原版 spawnParticle 默认 64 格）。 */
-    private static final double NEARBY_DISTANCE_SQ = 64.0 * 64.0;
     /** 发光轮廓透明度（glow color override 的 alpha，半透明）。 */
     private static final int GLOW_ALPHA = 0x99;
 
@@ -82,7 +74,8 @@ public class KeyGlowTask extends BukkitRunnable {
         double particleRadiusSq = config.getKeyParticleRadius() * config.getKeyParticleRadius();
         Color glowColor = config.getKeyGlowColor();
         double glowRadiusSq = config.getKeyGlowRadius() * config.getKeyGlowRadius();
-        Set<BlockLocation> glowMatched = new HashSet<>();
+        // 匹配结果：箱子位置 → 可见观众（持有匹配钥匙且在发光范围内的玩家）
+        Map<BlockLocation, Set<UUID>> glowMatched = new HashMap<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
             ItemStack hand = player.getInventory().getItemInMainHand();
             if (!itemManager.isType(hand, ItemType.KEY)) {
@@ -102,7 +95,7 @@ public class KeyGlowTask extends BukkitRunnable {
             }
             Location center = block.getLocation().add(0.5, 0.5, 0.5);
             double distanceSq = player.getLocation().distanceSquared(center);
-            // 粒子效果（key.particle-*）：仅播放粒子，不改变发光状态
+            // 粒子效果（key.particle-*）：仅对钥匙持有者发送
             if (particleEnabled && distanceSq <= particleRadiusSq) {
                 com.github.retrooper.packetevents.protocol.particle.Particle<?> dust =
                         new com.github.retrooper.packetevents.protocol.particle.Particle<>(
@@ -116,27 +109,26 @@ public class KeyGlowTask extends BukkitRunnable {
                         new com.github.retrooper.packetevents.util.Vector3f(
                                 (float) PARTICLE_OFFSET, (float) PARTICLE_OFFSET, (float) PARTICLE_OFFSET),
                         0f, PARTICLE_COUNT);
-                for (Player viewer : world.getPlayers()) {
-                    if (viewer.getLocation().distanceSquared(center) <= NEARBY_DISTANCE_SQ) {
-                        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, wrapper);
-                    }
-                }
+                PacketEvents.getAPI().getPlayerManager().sendPacket(player, wrapper);
             }
-            // 发光效果（key.glow-*）：同一位置多把钥匙只计一次（发光实体按位置去重）
+            // 发光效果（key.glow-*）：同一位置多把钥匙合并观众（发光实体按位置去重，观众按持有者定向）
             if (glowEnabled && distanceSq <= glowRadiusSq) {
-                glowMatched.add(paired);
+                glowMatched.computeIfAbsent(paired, k -> new HashSet<>()).add(player.getUniqueId());
             }
         }
-        // 对账发光展示实体：仍匹配的位置保持/新建，不再匹配的位置移除
+        // 对账发光展示实体：仍匹配的位置同步观众集合，不再匹配的位置移除
         Iterator<Map.Entry<BlockLocation, Integer>> iterator = glowEntities.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<BlockLocation, Integer> entry = iterator.next();
-            if (!glowMatched.contains(entry.getKey())) {
+            Set<UUID> holders = glowMatched.get(entry.getKey());
+            if (holders == null) {
                 LootChestDisplay.destroyEntity(entry.getValue());
                 iterator.remove();
+            } else {
+                LootChestDisplay.syncGlowViewers(entry.getValue(), holders);
             }
         }
-        for (BlockLocation loc : glowMatched) {
+        for (BlockLocation loc : glowMatched.keySet()) {
             if (openChests.contains(loc) || glowEntities.containsKey(loc)) {
                 continue;
             }
@@ -145,7 +137,7 @@ public class KeyGlowTask extends BukkitRunnable {
                 continue;
             }
             Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
-            int entityId = LootChestDisplay.spawnGlowDisplay(block, glowArgb(glowColor));
+            int entityId = LootChestDisplay.spawnGlowDisplay(block, glowArgb(glowColor), glowMatched.get(loc));
             glowEntities.put(loc, entityId);
         }
     }

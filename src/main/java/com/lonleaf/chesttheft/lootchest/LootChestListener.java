@@ -11,6 +11,7 @@ import com.lonleaf.chesttheft.config.GameConfig;
 import com.lonleaf.chesttheft.config.LockConfigManager;
 import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.minigame.GameManager;
+import io.lumine.mythic.bukkit.MythicBukkit;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -58,23 +59,26 @@ public class LootChestListener implements Listener, PacketListener {
         PacketEvents.getAPI().getEventManager().registerListener(this, PacketListenerPriority.LOW);
     }
 
-    // ==================== 死亡掉落转换 ====================
+    // ==================== 死亡掉落转换（基于 drops 配置） ====================
 
     @EventHandler
     public void onEntityDeath(EntityDeathEvent event) {
-        // vanilla-drop 为 true（默认）时保持原版掉落，不生成战利品箱
         if (config.isVanillaDrop()) {
             return;
         }
         if (event.getEntity() instanceof Player || isExcludedWorld(event.getEntity().getWorld().getName())) {
             return;
         }
-        LootChestProfile profile = configManager.getProfile(event.getEntityType().name());
+        // 确定实体标识符：MythicMobs 生物使用 "mythicmobs:<mob名称>"，否则用 Bukkit 实体类型名（小写）
+        String entityIdentifier = resolveEntityIdentifier(event);
+        if (entityIdentifier == null) return;
+
+        LootChestProfile profile = configManager.getProfileByEntity(entityIdentifier);
         if (profile == null) {
-            // 该生物未配置档案且无 default，保持原版自然掉落
             return;
         }
-        if (Math.random() > profile.getChance()) {
+        double probability = profile.getDropProbability(entityIdentifier);
+        if (Math.random() > probability) {
             return;
         }
         List<ItemStack> drops = event.getDrops();
@@ -83,16 +87,30 @@ public class LootChestListener implements Listener, PacketListener {
         }
         LootChest chest = manager.createChest(event.getEntity().getLocation(), drops, profile);
         if (chest != null) {
-            // 仅当成功生成战利品箱时才清除自然掉落，失败时保留原版掉落
             drops.clear();
         }
+    }
+
+    /**
+     * 解析实体标识符：MythicMobs 生物返回 "mythicmobs:<内部名称>"，否则返回实体类型名小写形式。
+     */
+    private String resolveEntityIdentifier(EntityDeathEvent event) {
+        if (Bukkit.getPluginManager().getPlugin("MythicMobs") != null) {
+            try {
+                var optMob = MythicBukkit.inst().getMobManager().getActiveMob(event.getEntity().getUniqueId());
+                if (optMob != null && optMob.isPresent()) {
+                    return "mythicmobs:" + optMob.get().getType().getInternalName();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return event.getEntityType().name().toLowerCase(Locale.ROOT);
     }
 
     // ==================== display 模式交互（PacketEvents 收包） ====================
 
     /**
-     * display 模式交互收包：玩家右键纯客户端 Interaction 载体时发送 INTERACT_ENTITY 包，
-     * 按实体 ID 反查箱子后调度主线程开箱或撬锁（收包在 netty 线程，不能直接调 Bukkit API）。
+     * display 模式交互收包：按实体 ID 反查箱子后调度主线程开箱或撬锁（netty 线程不能直接调 Bukkit API）。
      */
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {

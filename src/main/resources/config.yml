@@ -1,5 +1,11 @@
 # 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
-config-version: 5
+config-version: 6
+# 外部保护插件集成设置（与 LWC / Bolt 等保护插件交互）
+protection:
+  # 受 LWC / Bolt 保护的箱子是否启用本插件撬锁功能
+  # false（默认）：不可对受保护箱子上锁，若箱子已有锁则在保护所有者交互时自动卸锁并返还锁物品
+  # true：其他玩家可以通过撬锁打开受保护的箱子
+  picking-enabled: false
 # 是否输出调试日志
 debug: false
 # 语言设置: zh_cn / en_gb（首次启动时按服务器地区自动检测填充，可手动修改）
@@ -88,6 +94,9 @@ message-format:
   pairNotLocker: message    # 无法配对
   keyNotMatched: message    # 钥匙不匹配
   keyChanged: message       # 钥匙已更换
+  chestProtected: message    # 受保护箱子已卸锁
+  chestProtectedLockDenied: message    # 受保护箱子无法上锁
+  chestProtectedAccessDenied: message  # 受保护箱子无法操作
   noPermission: message     # 无权限
   playerOnly: message       # 仅玩家可用
   playerNotFound: message   # 玩家不在线

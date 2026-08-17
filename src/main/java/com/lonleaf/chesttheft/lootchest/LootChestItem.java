@@ -17,23 +17,23 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- * 战利品箱内物品定义：引用 items/ 文件夹物品（id）、原版材质（material）或
- * 外部插件物品（id 使用插件前缀，如 "MMOItems:SWORD:example_item"），
- * 可附加数量/名称/Lore/CustomModelData。
+ * 战利品箱内物品定义：items/ 物品（id）、原版材质（material）或外部插件物品（如 "MMOItems:SWORD:example_item"）。
  */
 public class LootChestItem {
     private final String itemId;
     private final Material material;
     private final int amount;
+    private final double chance;
     private final String name;
     private final List<String> lore;
     private final Integer customModelData;
 
-    private LootChestItem(String itemId, Material material, int amount, String name,
+    private LootChestItem(String itemId, Material material, int amount, double chance, String name,
                           List<String> lore, Integer customModelData) {
         this.itemId = itemId;
         this.material = material;
         this.amount = amount;
+        this.chance = chance;
         this.name = name;
         this.lore = lore;
         this.customModelData = customModelData;
@@ -48,6 +48,7 @@ public class LootChestItem {
             return null;
         }
         int amount = Math.max(1, map.get("amount") instanceof Number n ? n.intValue() : 1);
+        double chance = map.get("chance") instanceof Number n2 ? Math.max(0.0, Math.min(1.0, n2.doubleValue())) : 1.0;
         String name = map.get("name") instanceof String s2 ? s2 : null;
         List<String> lore = new ArrayList<>();
         if (map.get("lore") instanceof List<?> list) {
@@ -57,7 +58,7 @@ public class LootChestItem {
                 }
             }
         }
-        Integer customModelData = map.get("customModelData") instanceof Number n2 ? n2.intValue() : null;
+        Integer customModelData = map.get("customModelData") instanceof Number n3 ? n3.intValue() : null;
         Material material = null;
         if (materialName != null) {
             try {
@@ -69,7 +70,7 @@ public class LootChestItem {
         if (itemId == null && material == null) {
             return null;
         }
-        return new LootChestItem(itemId, material, amount, name, lore, customModelData);
+        return new LootChestItem(itemId, material, amount, chance, name, lore, customModelData);
     }
 
     /** 构建物品；items 文件夹引用缺失或外部插件未安装时返回 null（调用方跳过，不影响其余物品）。 */
@@ -108,5 +109,10 @@ public class LootChestItem {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    /** 物品生成概率（0~1，默认 1）。 */
+    public double getChance() {
+        return chance;
     }
 }

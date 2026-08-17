@@ -108,11 +108,7 @@ public class TriggerManager {
         }
     }
 
-    /**
-     * 解析锁物品的触发器 YAML。每个触发器（id 为主键）支持两种形式：
-     * 引用形式（值为全局触发器 id 列表，按其自身 type 分发）与内嵌定义形式（type + actions）。
-     * 非法类型或缺失引用记日志并跳过。
-     */
+    /** 解析锁物品的触发器 YAML：支持引用形式（全局触发器 id 列表，按其自身 type 分发）与内嵌定义形式（type + actions），非法项记日志跳过。 */
     private Map<TriggerType, List<Action>> parseLockTrigger(String triggerData) {
         Map<TriggerType, List<Action>> result = new EnumMap<>(TriggerType.class);
         YamlConfiguration config = YamlConfiguration.loadConfiguration(new StringReader(triggerData));

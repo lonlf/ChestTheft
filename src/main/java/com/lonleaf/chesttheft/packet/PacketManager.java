@@ -147,8 +147,7 @@ public class PacketManager implements PacketListener {
     }
 
     /**
-     * 为特殊物品追加 Lore 展示信息，非特殊物品返回 null。
-     * 直接从 NBT 读取物品 ID 与配对数据，不依赖 Bukkit PDC（包内物品转换后 PDC 不可用）。
+     * 为特殊物品追加 Lore 展示信息，非特殊物品返回 null；直接读 NBT（包内 PDC 不可用）。
      */
     private ItemStack injectLore(ItemStack item) {
         NBTCompound legacyTag = item.getOrCreateTag();

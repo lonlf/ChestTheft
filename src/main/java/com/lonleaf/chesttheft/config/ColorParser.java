@@ -6,10 +6,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * 颜色名解析：支持常见颜色名 #RRGGBB 十六进制。
- * 仅依赖 org.bukkit.Color 常量
- */
+/** 颜色名解析：支持常见颜色名或 #RRGGBB 十六进制。 */
 public final class ColorParser {
 
     private static final Map<String, Color> COLORS = new HashMap<>();

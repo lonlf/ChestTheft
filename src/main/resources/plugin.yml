@@ -3,8 +3,8 @@ version: '2.0'
 main: com.lonleaf.chesttheft.ChestTheft
 api-version: '1.19'
 authors: [ lonleaf ]
-softdepend: [ MythicMobs, PlaceholderAPI, packetevents, ItemsAdder, MMOItems, Nexo, Oraxen, CraftEngine, NeigeItems]
-description: 仿RPG箱子盗窃功能
+softdepend: [ MythicMobs, PlaceholderAPI, packetevents, ItemsAdder, MMOItems, Nexo, Oraxen, CraftEngine, NeigeItems, LWC, Bolt]
+description: This is a chest theft and lock picking plugin for Minecraft (Spigot).
 website: https://github.com/lonlf
 commands:
   chesttheft:

@@ -8,8 +8,10 @@ public interface Database {
 
     boolean isLocked(BlockLocation location);
 
-    /** 记录箱子锁定，保存锁的物品数据与上锁者 UUID（用于卸锁返还与钥匙配对）。 */
-    void lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token, int level);
+    /**
+     * 记录箱子锁定（保存锁物品数据与上锁者 UUID，用于卸锁返还与钥匙配对）；失败返回 false，调用方不应消耗锁物品。
+     */
+    boolean lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token, int level);
 
     /** 返回上锁者 UUID，无记录时返回 null。 */
     String getLocker(BlockLocation location);
