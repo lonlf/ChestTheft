@@ -167,26 +167,34 @@ public class PacketManager implements PacketListener {
         }
         ItemType type = def.getType();
 
-        org.bukkit.inventory.ItemStack bukkitItem = SpigotConversionUtil.toBukkitItemStack(item);
+        org.bukkit.inventory.ItemStack bukkitItem = SpigotConversionUtil.toBukkitItemStack(item).clone();
         ItemMeta meta = bukkitItem.getItemMeta();
         if (meta == null) {
             return null;
         }
-        List<String> lore = new ArrayList<>(meta.hasLore() ? meta.getLore() : List.of());
-        lore.add("");
         // 类型名本地化（key / lock / picker 按当前语言显示）
         String typeName = switch (type) {
             case KEY -> Messages.TYPE_KEY;
             case LOCK -> Messages.TYPE_LOCK;
             case PICKER -> Messages.TYPE_PICKER;
         };
-        lore.add(Messages.get(Messages.LORE_TYPE, typeName));
+        String typeLine = Messages.get(Messages.LORE_TYPE, typeName);
+        String notPairedLine = Messages.get(Messages.LORE_NOT_PAIRED);
+        // 幂等：移除已残留的旧注入行（空行、类型行、配对/未配对行），防止被污染的物品重复追加
+        String pairedPrefix = Messages.get(Messages.LORE_PAIRED, "");
+        List<String> lore = new ArrayList<>(meta.hasLore() ? meta.getLore() : List.of());
+        lore.removeIf(line -> line.isEmpty()
+                || line.equals(typeLine)
+                || line.equals(notPairedLine)
+                || line.startsWith(pairedPrefix));
+        lore.add("");
+        lore.add(typeLine);
         if (type == ItemType.KEY) {
             String paired = readNbtString(legacyTag, customData, NBT_LOCK_KEY);
             if (paired != null) {
                 lore.add(Messages.get(Messages.LORE_PAIRED, paired));
             } else {
-                lore.add(Messages.get(Messages.LORE_NOT_PAIRED));
+                lore.add(notPairedLine);
             }
         }
         meta.setLore(lore);

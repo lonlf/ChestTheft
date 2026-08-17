@@ -6,11 +6,13 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ItemConfigManager {
@@ -28,17 +30,15 @@ public class ItemConfigManager {
         defaultIds.clear();
         // 复制内置默认物品配置（仅在文件缺失时复制，避免 saveResource 对已存在文件输出警告）
         for (ItemType type : ItemType.values()) {
-            File target = new File(plugin.getDataFolder(), "items/" + type.getConfigKey() + ".yml");
+            String resPath = type.getConfigPath();
+            File target = new File(plugin.getDataFolder(), resPath);
             if (!target.exists()) {
-                plugin.saveResource("items/" + type.getConfigKey() + ".yml", false);
+                plugin.saveResource(resPath, false);
             }
         }
-        File itemsDir = new File(plugin.getDataFolder(), "items");
-        File[] files = itemsDir.listFiles((dir, name) -> name.endsWith(".yml"));
-        if (files == null) {
-            return;
-        }
-        Arrays.sort(files, Comparator.comparing(File::getName));
+        // 递归扫描 items/ 下所有 yml（lock/key 在子文件夹，可多文件扩展）
+        List<File> files = new ArrayList<>();
+        collectYml(new File(plugin.getDataFolder(), "items"), files);
         for (File file : files) {
             YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
             for (String id : config.getKeys(false)) {
@@ -55,6 +55,22 @@ public class ItemConfigManager {
                 }
                 definitions.put(id, def);
                 defaultIds.putIfAbsent(def.getType(), id);
+            }
+        }
+    }
+
+    /** 递归收集目录下所有 yml 文件，按文件名排序（保证加载顺序稳定）。 */
+    private void collectYml(File dir, List<File> out) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        Arrays.sort(files, Comparator.comparing(File::getName));
+        for (File file : files) {
+            if (file.isDirectory()) {
+                collectYml(file, out);
+            } else if (file.getName().endsWith(".yml")) {
+                out.add(file);
             }
         }
     }

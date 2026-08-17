@@ -65,6 +65,8 @@ public class Messages {
     public static volatile String CHECK_PDC;
     public static volatile String CHECK_KEY_INFO;
     public static volatile String CHECK_NOT_SPECIAL;
+    public static volatile String LOOT_CHEST_SPAWNED;
+    public static volatile String LOOT_CHEST_NOT_FOUND;
     public static volatile String NONE;
     public static volatile String UNLOCK_SUCCESS;
     public static volatile String UNLOCK_CONFIRM;
@@ -109,6 +111,8 @@ public class Messages {
     public static volatile String CHECK_PDC_FORMAT;
     public static volatile String CHECK_KEY_INFO_FORMAT;
     public static volatile String CHECK_NOT_SPECIAL_FORMAT;
+    public static volatile String LOOT_CHEST_SPAWNED_FORMAT;
+    public static volatile String LOOT_CHEST_NOT_FOUND_FORMAT;
     public static volatile String UNLOCK_SUCCESS_FORMAT;
     public static volatile String UNLOCK_CONFIRM_FORMAT;
     public static volatile String PAIR_SUCCESS_FORMAT;
@@ -153,6 +157,10 @@ public class Messages {
     public static volatile String LOG_TRIGGER_INVALID_TYPE;
     public static volatile String LOG_TRIGGER_REF_MISSING;
     public static volatile String LOG_ACTION_INVALID_TYPE;
+    public static volatile String LOG_LOOT_CHEST_DUPLICATE;
+    public static volatile String LOG_LOOT_CHEST_INVALID_MATERIAL;
+    public static volatile String LOG_LOOT_CHEST_ITEM_INVALID;
+    public static volatile String LOG_LOOT_CHEST_NOT_CONTAINER;
 
     // ==================== 初始化 ====================
 
@@ -267,6 +275,9 @@ public class Messages {
         CHECK_PDC_FORMAT = "message";
         CHECK_KEY_INFO_FORMAT = "message";
         CHECK_NOT_SPECIAL_FORMAT = formats.getOrDefault("checkNotSpecial", "message");
+        // lootchest 为管理员命令，固定使用聊天消息，不参与显示方式配置
+        LOOT_CHEST_SPAWNED_FORMAT = "message";
+        LOOT_CHEST_NOT_FOUND_FORMAT = "message";
         UNLOCK_SUCCESS_FORMAT = formats.getOrDefault("unlockSuccess", "message");
         UNLOCK_CONFIRM_FORMAT = formats.getOrDefault("unlockConfirm", "message");
         PAIR_SUCCESS_FORMAT = formats.getOrDefault("pairSuccess", "message");
@@ -483,6 +494,8 @@ public class Messages {
         CHECK_KEY_INFO = messages.getOrDefault("checkKeyInfo", "&e  Paired lock: &f{0}\n&e  Lock token: &f{1}");
         NONE = messages.getOrDefault("none", "none");
         CHECK_NOT_SPECIAL = messages.getOrDefault("checkNotSpecial", "&cThis is not a special item!");
+        LOOT_CHEST_SPAWNED = messages.getOrDefault("lootChestSpawned", "&aSpawned a loot chest: {0}");
+        LOOT_CHEST_NOT_FOUND = messages.getOrDefault("lootChestNotFound", "&cLoot chest profile not found: {0}");
         UNLOCK_SUCCESS = messages.getOrDefault("unlockSuccess", "&aLock removed and the lock item has been returned!");
         UNLOCK_CONFIRM = messages.getOrDefault("unlockConfirm", "&eInteract again to confirm unlocking!");
         PAIR_SUCCESS = messages.getOrDefault("pairSuccess", "&aKey paired to this lock!");
@@ -536,6 +549,10 @@ public class Messages {
         LOG_TRIGGER_INVALID_TYPE = messages.getOrDefault("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
         LOG_TRIGGER_REF_MISSING = messages.getOrDefault("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
         LOG_ACTION_INVALID_TYPE = messages.getOrDefault("logActionInvalidType", "Invalid action type '{0}'");
+        LOG_LOOT_CHEST_DUPLICATE = messages.getOrDefault("logLootChestDuplicate", "Duplicate loot chest profile '{0}' overridden by definition in {1}");
+        LOG_LOOT_CHEST_INVALID_MATERIAL = messages.getOrDefault("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
+        LOG_LOOT_CHEST_ITEM_INVALID = messages.getOrDefault("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
+        LOG_LOOT_CHEST_NOT_CONTAINER = messages.getOrDefault("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
     }
 
     /**
@@ -576,6 +593,8 @@ public class Messages {
             map.put("checkKeyInfo", "&e  配对锁: &f{0}\n&e  锁凭证: &f{1}");
             map.put("none", "无");
             map.put("checkNotSpecial", "&c这不是一个特殊物品！");
+            map.put("lootChestSpawned", "&a已召唤战利品箱：{0}");
+            map.put("lootChestNotFound", "&c未找到战利品箱档案：{0}");
             map.put("unlockSuccess", "&a已卸下锁并返还锁物品");
             map.put("unlockConfirm", "&e再次交互以确认卸锁！");
             map.put("pairSuccess", "&a钥匙已与这把锁配对！");
@@ -621,6 +640,10 @@ public class Messages {
             map.put("logPicklockStartDebug", "玩家 {0} 开始撬锁 {1}（锁等级 {2}，撬锁器等级 {3}，生效等级 {4}）");
             map.put("logTriggerInvalidType", "无效的触发器类型 '{0}'（trigger {1} in {2}）");
             map.put("logActionInvalidType", "无效的动作类型 '{0}'");
+            map.put("logLootChestDuplicate", "重复的战利品箱档案 '{0}'，被 {1} 中的定义覆盖");
+            map.put("logLootChestInvalidMaterial", "档案 {0} 的展示材质无效: {1}，使用默认值");
+            map.put("logLootChestItemInvalid", "档案 {0} 中存在无效的战利品物品: {1}，已跳过");
+            map.put("logLootChestNotContainer", "在 {0} 放置战利品箱失败: {1} 不是容器，已跳过生成");
         } else {
             map.put("success", "&aPicklock successful!");
             map.put("fail", "&cPicklock failed!");
@@ -643,6 +666,8 @@ public class Messages {
             map.put("checkKeyInfo", "&e  Paired lock: &f{0}\n&e  Lock token: &f{1}");
             map.put("none", "none");
             map.put("checkNotSpecial", "&cThis is not a special item!");
+            map.put("lootChestSpawned", "&aSpawned a loot chest: {0}");
+            map.put("lootChestNotFound", "&cLoot chest profile not found: {0}");
             map.put("unlockSuccess", "&aLock removed and the lock item has been returned!");
             map.put("unlockConfirm", "&eInteract again to confirm unlocking!");
             map.put("pairSuccess", "&aKey paired to this lock!");
@@ -651,7 +676,7 @@ public class Messages {
             map.put("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
             map.put("playerOnly", "&cThis command can only be used by players!");
             map.put("reloaded", "&aConfiguration reloaded!");
-            map.put("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft reload");
+            map.put("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft reload");
             map.put("loreType", "&7Type: &f{0}");
             map.put("lorePaired", "&aPaired: &f{0}");
             map.put("loreNotPaired", "&7Not paired");
@@ -690,6 +715,10 @@ public class Messages {
             map.put("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
             map.put("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
             map.put("logActionInvalidType", "Invalid action type '{0}'");
+            map.put("logLootChestDuplicate", "Duplicate loot chest profile '{0}' overridden by definition in {1}");
+            map.put("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
+            map.put("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
+            map.put("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
         }
         return map;
     }

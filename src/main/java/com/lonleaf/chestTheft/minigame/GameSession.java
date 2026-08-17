@@ -18,6 +18,8 @@ public class GameSession {
     private final GameConfig config;
     /** 开始撬锁时的目标箱子：判定成功后打开此箱子。 */
     private final Block target;
+    /** 撬锁成功回调（战利品箱等非原版箱子使用）：不为 null 时成功后执行回调而非打开原版箱子。 */
+    private final Runnable onSuccess;
     /** 开始撬锁时的玩家位置：移动超范围中断判定基准。 */
     private final Location startLocation;
     private BukkitTask task;
@@ -29,10 +31,15 @@ public class GameSession {
     private int elapsedTicks = 0;
 
     public GameSession(Player player, GameManager gameManager, GameConfig config, Block target) {
+        this(player, gameManager, config, target, null);
+    }
+
+    public GameSession(Player player, GameManager gameManager, GameConfig config, Block target, Runnable onSuccess) {
         this.player = player;
         this.gameManager = gameManager;
         this.config = config;
         this.target = target;
+        this.onSuccess = onSuccess;
         this.startLocation = player.getLocation().clone();
         initializeGame();
     }
@@ -101,6 +108,11 @@ public class GameSession {
 
     public Block getTarget() {
         return target;
+    }
+
+    /** 撬锁成功回调（战利品箱等自定义目标），为 null 时成功后按原版逻辑打开目标箱子。 */
+    public Runnable getOnSuccess() {
+        return onSuccess;
     }
 
     public Location getStartLocation() {

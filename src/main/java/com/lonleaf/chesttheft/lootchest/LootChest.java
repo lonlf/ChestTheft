@@ -1,0 +1,123 @@
+package com.lonleaf.chesttheft.lootchest;
+
+import com.lonleaf.chesttheft.model.BlockLocation;
+import org.bukkit.Location;
+import org.bukkit.block.Block;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.UUID;
+
+/** 单个战利品箱：持有物品栏（display 为虚拟物品栏，block 为真实箱子物品栏）、展示实体 ID 与开启状态。 */
+public class LootChest {
+    private final UUID uuid;
+    private volatile Location location;
+    private final LootChestProfile profile;
+    private final long created;
+    private volatile boolean looted;
+    private volatile long lootedAt;
+    private volatile Inventory inventory;
+    /** display 模式的展示实体 ID（纯客户端实体，服务端无实体对象）。 */
+    private volatile int displayEntityId = -1;
+    /** display 模式的交互载体实体 ID（纯客户端实体，服务端无实体对象）。 */
+    private volatile int interactEntityId = -1;
+    private volatile Block chestBlock;
+
+    public LootChest(Location location, Inventory inventory, LootChestProfile profile) {
+        this.uuid = UUID.randomUUID();
+        this.location = location.clone();
+        this.inventory = inventory;
+        this.profile = profile;
+        this.created = System.currentTimeMillis();
+    }
+
+    /** 打开箱子（display 模式调用）；block 模式由原版交互打开。 */
+    public void open(Player player) {
+        looted = true;
+        lootedAt = System.currentTimeMillis();
+        player.openInventory(inventory);
+    }
+
+    /** 标记为已开启（block 模式在原版打开时由 InventoryOpenEvent 调用）。 */
+    public void markLooted() {
+        looted = true;
+        lootedAt = System.currentTimeMillis();
+    }
+
+    public boolean isEmpty() {
+        for (ItemStack item : inventory.getContents()) {
+            if (item != null && !item.getType().isAir()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public UUID getUuid() {
+        return uuid;
+    }
+
+    /** 箱子所在世界坐标（方块格）。 */
+    public Location getLocation() {
+        return location;
+    }
+
+    public BlockLocation getBlockLocation() {
+        return BlockLocation.from(location);
+    }
+
+    /** 配置档案，未配置时（default 缺失）为 null。 */
+    public LootChestProfile getProfile() {
+        return profile;
+    }
+
+    public long getCreated() {
+        return created;
+    }
+
+    /** 是否已被玩家开启过（决定过期时间按开启前/后计算）。 */
+    public boolean isLooted() {
+        return looted;
+    }
+
+    /** 首次被开启的时间戳（毫秒），未开启时为 0。 */
+    public long getLootedAt() {
+        return lootedAt;
+    }
+
+    public Inventory getInventory() {
+        return inventory;
+    }
+
+    void setInventory(Inventory inventory) {
+        this.inventory = inventory;
+    }
+
+    /** display 模式的展示实体 ID，block 模式为 -1。 */
+    public int getDisplayEntityId() {
+        return displayEntityId;
+    }
+
+    void setDisplayEntityId(int displayEntityId) {
+        this.displayEntityId = displayEntityId;
+    }
+
+    /** display 模式的交互载体实体 ID（提供可点击 hitbox），block 模式为 -1。 */
+    public int getInteractEntityId() {
+        return interactEntityId;
+    }
+
+    void setInteractEntityId(int interactEntityId) {
+        this.interactEntityId = interactEntityId;
+    }
+
+    /** block 模式的真实箱子方块，display 模式为 null。 */
+    public Block getChestBlock() {
+        return chestBlock;
+    }
+
+    void setChestBlock(Block chestBlock) {
+        this.chestBlock = chestBlock;
+    }
+}

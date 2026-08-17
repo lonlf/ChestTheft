@@ -20,7 +20,7 @@
 #   属性:   exp / level / food / saturation / potion-effect
 #   物品:   give-item（value 含 item 材质 / amount 数量 / to-inventory 是否入包）
 #   组合:   chain / delay（value 含 delay tick 与 actions 动作组）
-example_success:
+example_interrupted:
   type: interrupted
   actions:
     msg1:

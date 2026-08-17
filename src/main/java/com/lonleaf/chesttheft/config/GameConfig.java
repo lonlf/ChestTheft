@@ -2,7 +2,6 @@ package com.lonleaf.chesttheft.config;
 
 import org.bukkit.configuration.ConfigurationSection;
 
-/** 撬锁小游戏配置：支持为不同场景创建不同的配置实例。 */
 public class GameConfig {
     private final String name;
     private final int barLength;

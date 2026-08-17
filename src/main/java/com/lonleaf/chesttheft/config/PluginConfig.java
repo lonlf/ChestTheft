@@ -1,6 +1,7 @@
 package com.lonleaf.chesttheft.config;
 
 import com.lonleaf.chesttheft.ChestTheft;
+import org.bukkit.Color;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -26,6 +27,11 @@ public class PluginConfig {
 
     public enum DatabaseType {
         SQLITE, MYSQL
+    }
+
+    /** 战利品箱展示方式：display 使用展示实体（发包渲染），block 放置真实箱子方块。 */
+    public enum LootChestDisplayType {
+        DISPLAY, BLOCK
     }
 
     public static class DataBaseConfig {
@@ -98,6 +104,20 @@ public class PluginConfig {
     private volatile Action keyInteractionAction;
     private volatile boolean keyInteractionSneak;
     private volatile boolean keyRequireInHand;
+    private volatile boolean keyParticleEnabled;
+    private volatile Color keyParticleColor;
+    private volatile double keyParticleRadius;
+    private volatile boolean keyGlowEnabled;
+    private volatile Color keyGlowColor;
+    private volatile double keyGlowRadius;
+    // ---- 战利品箱设置（lootchest 小节） ----
+    private volatile boolean vanillaDrop;
+    private volatile LootChestDisplayType lootChestDisplayType;
+    private volatile boolean lootChestKeep;
+    private volatile int lootChestExpireTime;
+    private volatile int lootChestExpireTimeOpened;
+    private volatile double lootChestInteractionRange;
+    private volatile List<String> lootChestExcludedWorlds;
     /** 各消息显示方式配置（message-format 小节）：消息键 → message/actionbar/title/subtitle。 */
     private final Map<String, String> messageFormats = new HashMap<>();
 
@@ -265,6 +285,21 @@ public class PluginConfig {
         keyInteractionAction = parseAction(config.getString("key.interaction-action", "LEFT"));
         keyInteractionSneak = config.getBoolean("key.interaction-sneak", true);
         keyRequireInHand = config.getBoolean("key.require-in-hand", true);
+        keyParticleEnabled = config.getBoolean("key.particle-enabled", true);
+        Color parsedParticle = ColorParser.parse(config.getString("key.particle-color", "GOLD"));
+        keyParticleColor = parsedParticle != null ? parsedParticle : Color.fromRGB(255, 215, 0);
+        keyParticleRadius = Math.max(1.0, config.getDouble("key.particle-radius", 8.0));
+        keyGlowEnabled = config.getBoolean("key.glow-enabled", true);
+        Color parsedGlow = ColorParser.parse(config.getString("key.glow-color", "GOLD"));
+        keyGlowColor = parsedGlow != null ? parsedGlow : Color.fromRGB(255, 215, 0);
+        keyGlowRadius = Math.max(1.0, config.getDouble("key.glow-radius", 8.0));
+        vanillaDrop = config.getBoolean("lootchest.vanilla-drop", true);
+        lootChestDisplayType = parseLootChestDisplayType(config.getString("lootchest.display-type", "display"));
+        lootChestKeep = config.getBoolean("lootchest.keep", true);
+        lootChestExpireTime = Math.max(0, config.getInt("lootchest.expire-time", 600));
+        lootChestExpireTimeOpened = Math.max(0, config.getInt("lootchest.expire-time-opened", 300));
+        lootChestInteractionRange = Math.max(1.0, config.getDouble("lootchest.interaction-range", 4.0));
+        lootChestExcludedWorlds = config.getStringList("lootchest.worlds.exclude");
         debug = config.getBoolean("debug", false);
 
         // 语言：未设置时用系统检测值兜底（首启时由 applySystemLanguage 写回文件）
@@ -335,6 +370,83 @@ public class PluginConfig {
     /** 打开上锁箱子是否必须手持钥匙，false 时背包中有钥匙即可。 */
     public boolean isKeyRequireInHand() {
         return keyRequireInHand;
+    }
+
+    /** 手持匹配钥匙时对应箱子粒子提示（key.particle-enabled）。 */
+    public boolean isKeyParticleEnabled() {
+        return keyParticleEnabled;
+    }
+
+    /** 钥匙粒子颜色。 */
+    public Color getKeyParticleColor() {
+        return keyParticleColor;
+    }
+
+    /** 钥匙粒子生效半径（方块）。 */
+    public double getKeyParticleRadius() {
+        return keyParticleRadius;
+    }
+
+    /** 手持匹配钥匙时对应箱子发光提示（key.glow-enabled）。 */
+    public boolean isKeyGlowEnabled() {
+        return keyGlowEnabled;
+    }
+
+    /** 钥匙发光颜色。 */
+    public Color getKeyGlowColor() {
+        return keyGlowColor;
+    }
+
+    /** 钥匙发光生效半径（方块）。 */
+    public double getKeyGlowRadius() {
+        return keyGlowRadius;
+    }
+
+    /** 生物死亡是否保持原版掉落（lootchest.vanilla-drop）；false 时将掉落物转化为战利品箱。 */
+    public boolean isVanillaDrop() {
+        return vanillaDrop;
+    }
+
+    /** 战利品箱展示方式：display 展示实体 / block 真实箱子方块。 */
+    public LootChestDisplayType getLootChestDisplayType() {
+        return lootChestDisplayType;
+    }
+
+    /** 玩家未拿完战利品时是否保留箱子（取空后自动消失）。 */
+    public boolean isLootChestKeep() {
+        return lootChestKeep;
+    }
+
+    /** 箱子未被开启的过期时间（秒），0 表示不过期。 */
+    public int getLootChestExpireTime() {
+        return lootChestExpireTime;
+    }
+
+    /** 箱子被开启后的过期时间（秒），0 表示不过期。 */
+    public int getLootChestExpireTimeOpened() {
+        return lootChestExpireTimeOpened;
+    }
+
+    /** 与展示实体的交互判定距离（display 模式，方块）。 */
+    public double getLootChestInteractionRange() {
+        return lootChestInteractionRange;
+    }
+
+    /** 不生成战利品箱的世界名列表。 */
+    public List<String> getLootChestExcludedWorlds() {
+        return lootChestExcludedWorlds;
+    }
+
+    /** 解析战利品箱展示方式：display / block，非法值回退为 display。 */
+    private LootChestDisplayType parseLootChestDisplayType(String name) {
+        if (name == null) {
+            return LootChestDisplayType.DISPLAY;
+        }
+        try {
+            return LootChestDisplayType.valueOf(name.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return LootChestDisplayType.DISPLAY;
+        }
     }
 
     /** 解析钥匙交互按键动作：LEFT / RIGHT 对应点击方块事件，非法值回退为 LEFT。 */

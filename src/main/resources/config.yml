@@ -1,5 +1,5 @@
 # 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
-config-version: 3
+config-version: 5
 # 是否输出调试日志
 debug: false
 # 语言设置: zh_cn / en_gb（首次启动时按服务器地区自动检测填充，可手动修改）
@@ -40,6 +40,36 @@ key:
   interaction-sneak: true
   # 打开上锁箱子是否必须手持钥匙；false 时背包中有钥匙即可
   require-in-hand: true
+  # 手持与箱子配对值匹配的钥匙时，对应箱子粒子提示（粒子效果）
+  particle-enabled: true
+  # 粒子颜色（颜色名如 GOLD/RED/AQUA，或 #RRGGBB 十六进制）
+  particle-color: GOLD
+  # 粒子生效半径（方块，玩家与箱子距离在此范围内才播放粒子）
+  particle-radius: 8.0
+  # 手持与箱子配对值匹配的钥匙时，对应箱子发光提示（发光效果）
+  glow-enabled: true
+  # 发光颜色（颜色名如 GOLD/RED/AQUA，或 #RRGGBB 十六进制）
+  glow-color: GOLD
+  # 发光生效半径（方块，玩家与箱子距离在此范围内才发光）
+  glow-radius: 8.0
+
+# 掉落战利品箱设置（生物死亡后掉落物装入战利品箱，配置见 lootchest/ 文件夹）
+lootchest:
+  # 生物死亡是否保持原版掉落（默认开启；设为 false 后生物死亡不再直接掉落物品，而是生成战利品箱）
+  vanilla-drop: true
+  # 展示方式: display（展示实体，默认，由服务器发包渲染） / block（放置真实箱子方块）
+  display-type: display
+  # 玩家未拿完战利品时是否保留箱子（保留则之后可再次打开；取空后自动消失，默认开启）
+  keep: true
+  # 箱子未被开启的过期时间（秒）；0 表示不过期
+  expire-time: 600
+  # 箱子被开启后的过期时间（秒）；0 表示不过期
+  expire-time-opened: 300
+  # 与展示实体的交互判定距离（display 模式，方块）
+  interaction-range: 4.0
+  # 不生成战利品箱的世界名列表
+  worlds:
+    exclude: []
 
 # 各交互消息显示方式: message（聊天）/ actionbar（动作栏）/ title（标题）
 message-format:

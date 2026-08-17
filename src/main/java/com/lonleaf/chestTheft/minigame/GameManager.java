@@ -55,6 +55,11 @@ public class GameManager implements Listener {
 
     /** 尝试开始撬锁（使用指定配置，为 null 时回退默认配置）。 */
     public boolean startGame(Player player, Block target, GameConfig gameConfig) {
+        return startGame(player, target, gameConfig, null);
+    }
+
+    /** 尝试开始撬锁（使用指定配置并携带成功回调；回调为 null 时成功后按原版逻辑打开目标箱子）。 */
+    public boolean startGame(Player player, Block target, GameConfig gameConfig, Runnable onSuccess) {
         UUID uuid = player.getUniqueId();
         if (activeGames.containsKey(uuid)) {
             return false;
@@ -71,7 +76,7 @@ public class GameManager implements Listener {
             }
         }
 
-        GameSession session = new GameSession(player, this, config, target);
+        GameSession session = new GameSession(player, this, config, target, onSuccess);
         activeGames.put(uuid, session);
         session.start();
         return true;

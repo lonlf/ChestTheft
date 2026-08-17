@@ -277,13 +277,18 @@ public class ChestListener implements Listener {
             Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT);
             triggerManager.fire(TriggerType.SUCCESS, new TriggerContext(player, BlockLocation.from(session.getTarget())));
             fireLockTrigger(session.getTarget(), TriggerType.SUCCESS, player);
-            // 打开开始撬锁时的目标箱子（判定时点击的可能是任意方块 / 空气）
-            Block target = session.getTarget();
-            if (target != null && target.getType() == Material.CHEST) {
-                target.getState().update(true);
-                player.openInventory(((org.bukkit.block.Chest) target.getState()).getInventory());
-                // 授予限时开箱授权：成功后在配置时长内可随时打开该箱子
-                gameManager.grantAccess(player, BlockLocation.from(target));
+            // 战利品箱等自定义目标：成功后执行回调打开；否则打开开始撬锁时的目标箱子（判定时点击的可能是任意方块 / 空气）
+            Runnable onSuccess = session.getOnSuccess();
+            if (onSuccess != null) {
+                onSuccess.run();
+            } else {
+                Block target = session.getTarget();
+                if (target != null && target.getType() == Material.CHEST) {
+                    target.getState().update(true);
+                    player.openInventory(((org.bukkit.block.Chest) target.getState()).getInventory());
+                    // 授予限时开箱授权：成功后在配置时长内可随时打开该箱子
+                    gameManager.grantAccess(player, BlockLocation.from(target));
+                }
             }
         } else {
             Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);

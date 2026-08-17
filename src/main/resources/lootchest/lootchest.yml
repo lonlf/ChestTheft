@@ -1,0 +1,78 @@
+# ============================================
+# 战利品箱配置（Loot Chest Profiles）
+#
+# 本目录（lootchest/）下的全部 yml 都会被加载，档案 ID（顶层键）为主键。
+# 生物死亡时按其类型名（如 ZOMBIE、SKELETON、CREEPER）匹配档案；
+# 未精确匹配到任何档案时回退使用 default 档案；都没有时保持原版自然掉落。
+#
+# 档案中物品支持三种写法：
+#   - id: 引用 items/ 文件夹中的物品定义（如 id: key001）
+#   - id: 引用外部插件物品（如 id: "MMOItems:SWORD:example_item"）
+#   - material: 直接使用原版材质（如 material: DIAMOND）
+# 可选字段：amount（数量，默认 1）、name（显示名）、lore（Lore 行）、customModelData
+#
+# 外部插件物品 id 格式（不区分大小写）：
+#   ItemsAdder:   id: "ItemsAdder:<物品ID>"
+#   NeigeItems:   id: "NeigeItems:<物品ID>"
+#   MMOItems:     id: "MMOItems:<类型>:<物品ID>"（如 MMOItems:SWORD:legendary_sword）
+#   MythicMobs:   id: "MythicMobs:<物品ID>"
+#   Nexo:         id: "Nexo:<物品ID>"
+#   Oraxen:       id: "Oraxen:<物品ID>"
+#   CraftEngine:  id: "CraftEngine:<物品ID>"
+# ============================================
+
+# 默认档案：所有未单独配置的生物使用此配置
+default:
+  # 箱子界面标题（支持 & 颜色码）
+  title: "&8战利品箱"
+  # 展示材质：display 模式下展示实体显示的方块（block 模式下需为 CHEST/TRAPPED_CHEST/BARREL）
+  display-material: CHEST
+  # 是否将生物自然掉落物装入箱子（false 时箱子仅含下方配置的物品）
+  include-drops: true
+  # 生成概率（0~1，1 为必然生成）
+  chance: 1.0
+  # 撬锁等级：-1 无需撬锁直接打开；>= 0 需先完成撬锁小游戏才能打开
+  # （小游戏难度取自 locklevel/ 中对应等级，等级未配置时逐级回退）
+  level: -1
+  # 开箱特效（可选）：均为单行配置，参数间用空格分隔，未写出的参数使用默认值。
+  # 发光与粒子未配置则不启用；开箱音效始终启用，未配置默认 BLOCK_CHEST_OPEN。
+  open-effects:
+    glow: "GOLD 6"                     # 发光颜色 时长tick（颜色名如 GOLD/RED/AQUA，或 #RRGGBB 十六进制；仅 display 模式生效，默认时长 6）
+    particles: "CLOUD 12"              # 粒子类型 数量（Particle 枚举；默认数量 12）
+    sound: "BLOCK_CHEST_OPEN 1.0 1.0"  # 音效 音量 音调（Sound 枚举；默认音量/音调 1.0，也可只写类型）
+  # 箱内额外物品列表
+  items:
+    - material: GOLD_INGOT
+      amount: 3
+    - material: DIAMOND
+      amount: 1
+      name: "&b闪亮的钻石"
+      lore:
+        - "&7来自战利品箱的稀有掉落"
+    - id: key001
+      amount: 1
+
+# 示例：单独为僵尸配置（同名生物类型均可单独配置）
+#zombie:
+#  title: "&c僵尸的战利品箱"
+#  display-material: CHEST
+#  include-drops: true
+#  chance: 0.5
+#  level: 2          # 需撬锁（等级 2 难度）
+#  items:
+#    - material: ROTTEN_FLESH
+#      amount: 2
+#
+#示例：
+#items:
+#  - id: "MMOItems:SWORD:legendary_sword"
+#    amount: 1
+#    name: "&c传说之剑"       # 可选覆写显示名
+#    lore:
+#      - "&7来自战利品箱的稀有掉落"  # 可选覆写Lore
+#
+#  - id: "ItemsAdder:ruby"
+#    amount: 3
+#
+#  - id: "Nexo:mythril_ingot"
+#    amount: 5

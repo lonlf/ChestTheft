@@ -10,11 +10,21 @@ import com.lonleaf.chesttheft.item.ItemConfigManager;
 import com.lonleaf.chesttheft.item.ItemManager;
 import com.lonleaf.chesttheft.item.ItemTagger;
 import com.lonleaf.chesttheft.listener.ChestListener;
+import com.lonleaf.chesttheft.listener.KeyGlowListener;
+import com.lonleaf.chesttheft.lootchest.LootChestConfigManager;
+import com.lonleaf.chesttheft.lootchest.LootChestListener;
+import com.lonleaf.chesttheft.lootchest.LootChestManager;
 import com.lonleaf.chesttheft.packet.PacketManager;
 import com.lonleaf.chesttheft.service.ChestService;
+import com.lonleaf.chesttheft.service.KeyGlowTask;
 import com.lonleaf.chesttheft.trigger.TriggerManager;
 import com.github.retrooper.packetevents.PacketEvents;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
+import me.tofaa.entitylib.APIConfig;
+import me.tofaa.entitylib.EntityLib;
+import me.tofaa.entitylib.meta.display.AbstractDisplayMeta;
+import me.tofaa.entitylib.meta.display.BlockDisplayMeta;
+import me.tofaa.entitylib.spigot.SpigotEntityLibPlatform;
 import org.bukkit.NamespacedKey;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -23,6 +33,8 @@ public final class ChestTheft extends JavaPlugin {
     private DatabaseManager databaseManager;
     private GameManager gameManager;
     private LockConfigManager lockConfigManager;
+    private LootChestManager lootChestManager;
+    private KeyGlowTask keyGlowTask;
 
     @Override
     public void onLoad() {
@@ -48,6 +60,15 @@ public final class ChestTheft extends JavaPlugin {
         // PacketEvents 初始化：注册内部 Bukkit 监听器并完成通道注入（须在注册包监听器之前）
         PacketEvents.getAPI().getSettings().reEncodeByDefault(true);
         PacketEvents.getAPI().init();
+        // EntityLib 初始化：基于 PacketEvents 的纯客户端实体库（shade 重定位为 com.lonleaf.entitylib）
+        EntityLib.init(new SpigotEntityLibPlatform(this),
+                new APIConfig(PacketEvents.getAPI()).usePlatformLogger());
+        EntityLib.getApi().onEnable();
+        // 临时调试：确认 PacketEvents 版本检测与 EntityLib Display 布局选择（排查 display 箱子/发光实体不可见）
+        getLogger().info("[ChestTheft][DEBUG] PacketEvents ServerVersion = "
+                + PacketEvents.getAPI().getServerManager().getVersion());
+        getLogger().info("[ChestTheft][DEBUG] AbstractDisplayMeta.MAX_OFFSET = " + AbstractDisplayMeta.MAX_OFFSET
+                + " (22=旧布局/<1.20.2, 23=新布局/>=1.20.2), BlockDisplayMeta.OFFSET = " + BlockDisplayMeta.OFFSET);
         // 配置管理器：加载全部配置（含首启语言检测写回、config-version 自动升级）
         PluginConfig config = new PluginConfig(this);
         // 应用 config.yml 中 message-format 小节的消息显示方式配置
@@ -74,18 +95,37 @@ public final class ChestTheft extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config, lockConfigManager, triggerManager), this);
         // 小游戏管理器监听：撬锁中受击或移动超范围时按配置中止游戏
         getServer().getPluginManager().registerEvents(gameManager, this);
+        // 钥匙发光提示：手持匹配钥匙时对应箱子发光（key.glow-* 配置）
+        keyGlowTask = new KeyGlowTask(this, config, chestService, itemManager);
+        keyGlowTask.start();
+        // 发光与箱子开合联动：打开时移除发光实体（避免开盖动画错位），关闭后恢复
+        getServer().getPluginManager().registerEvents(new KeyGlowListener(keyGlowTask), this);
 
-        new CommandManager(this, itemManager, itemTagger, itemConfigManager, config, gameManager, lockConfigManager, triggerManager);
+        // 战利品箱模块：生物死亡掉落转化为战利品箱（lootchest/ 配置文件夹）
+        LootChestConfigManager lootChestConfigManager = new LootChestConfigManager(this, itemManager);
+        lootChestManager = new LootChestManager(this, config, lootChestConfigManager);
+        LootChestListener lootChestListener = new LootChestListener(this, config, lootChestManager, lootChestConfigManager, gameManager, lockConfigManager);
+        getServer().getPluginManager().registerEvents(lootChestListener, this);
+
+        new CommandManager(this, itemManager, itemTagger, itemConfigManager, config, gameManager, lockConfigManager, triggerManager, lootChestManager);
 
         getLogger().info(Messages.getLog(Messages.LOG_ENABLED));
     }
 
     @Override
     public void onDisable() {
-        PacketEvents.getAPI().terminate();
+        // 先清理 EntityLib 纯客户端实体（发包销毁需在 PacketEvents terminate 之前完成）
         if (gameManager != null) {
             gameManager.cleanup();
         }
+        if (lootChestManager != null) {
+            lootChestManager.clearAll();
+        }
+        // 移除钥匙发光展示实体（EntityLib 实体，须在 PacketEvents terminate 之前清理）
+        if (keyGlowTask != null) {
+            keyGlowTask.cancel();
+        }
+        PacketEvents.getAPI().terminate();
         if (databaseManager != null) {
             databaseManager.shutdown();
         }
