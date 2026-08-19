@@ -2,11 +2,15 @@ package com.lonleaf.chesttheft.listener;
 
 import com.lonleaf.chesttheft.model.BlockLocation;
 import com.lonleaf.chesttheft.service.KeyGlowTask;
+import org.bukkit.block.Block;
+import org.bukkit.block.Chest;
 import org.bukkit.block.Container;
+import org.bukkit.block.DoubleChest;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 
 /** 钥匙发光与箱子开合联动：容器打开时移除发光实体（避免开盖动画错位），关闭后由 KeyGlowTask 恢复。 */
@@ -20,17 +24,33 @@ public class KeyGlowListener implements Listener {
 
     @EventHandler
     public void onOpen(InventoryOpenEvent event) {
-        InventoryHolder holder = event.getInventory().getHolder();
-        if (holder instanceof Container container) {
-            keyGlowTask.onChestOpen(BlockLocation.from(container.getBlock()));
+        Block block = containerBlockOf(event.getInventory());
+        if (block != null) {
+            keyGlowTask.onChestOpen(BlockLocation.from(block));
         }
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent event) {
-        InventoryHolder holder = event.getInventory().getHolder();
-        if (holder instanceof Container container) {
-            keyGlowTask.onChestClose(BlockLocation.from(container.getBlock()));
+        Block block = containerBlockOf(event.getInventory());
+        if (block != null) {
+            keyGlowTask.onChestClose(BlockLocation.from(block));
         }
+    }
+
+    /** 从容器库存反查一个箱子方块：单箱返回自身，双箱返回任意一侧（KeyGlowTask 会映射到统一发光 key）。 */
+    private Block containerBlockOf(Inventory inventory) {
+        InventoryHolder holder = inventory.getHolder();
+        if (holder instanceof Container container) {
+            return container.getBlock();
+        }
+        if (holder instanceof DoubleChest doubleChest) {
+            // 双箱的 holder 为 DoubleChest（不实现 Container），取任意一侧的方块即可
+            InventoryHolder side = doubleChest.getLeftSide();
+            if (side instanceof Chest chest) {
+                return chest.getBlock();
+            }
+        }
+        return null;
     }
 }

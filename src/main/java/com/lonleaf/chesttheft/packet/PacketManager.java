@@ -26,10 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 协议包处理模块（PacketEvents）：监听物品包为特殊物品动态注入 Lore（仅客户端可见，
- * 不改服务器端真实数据）。覆盖 WINDOW_ITEMS / SET_SLOT / SET_PLAYER_INVENTORY /
- * SET_CURSOR_ITEM 四类包，避免点击、拖动、光标携带等场景下注入的 Lore 丢失。
- * 版本差异（1.20.5+ 组件化 custom_data）见插件结构与功能说明文档。
+ * 协议包处理模块（PacketEvents）：为特殊物品动态注入 Lore（仅客户端可见，不改真实数据）。
+ * 覆盖四类物品包避免点击/拖动/光标场景注入行丢失；版本差异见插件结构与功能说明文档。
  */
 public class PacketManager implements PacketListener {
 

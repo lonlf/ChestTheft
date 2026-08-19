@@ -22,6 +22,8 @@ import com.lonleaf.chesttheft.trigger.TriggerType;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.Chest;
+import org.bukkit.block.DoubleChest;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -33,6 +35,7 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.HashMap;
@@ -83,6 +86,11 @@ public class ChestListener implements Listener {
         Block block = event.getClickedBlock();
         if (block == null) {
             return;
+        }
+        // 双箱子：点击未上锁的一侧时归一化到已上锁的一侧处理（双箱共享容器，未上锁侧可直接打开整个双箱）
+        Block lockedBlock = resolveLockedChestBlock(block);
+        if (lockedBlock != null) {
+            block = lockedBlock;
         }
 
         if (chestService.isLocked(block)) {
@@ -135,6 +143,8 @@ public class ChestListener implements Listener {
                         event.setCancelled(false);
                         triggerManager.fire(TriggerType.KEY_OPEN, new TriggerContext(player, location));
                         fireLockTrigger(block, TriggerType.KEY_OPEN, player);
+                        // 箱子所有者打开箱子后撤销他人的撬锁授权，实现"重新上锁"
+                        revokeAccessIfLocker(player, block, location);
                     } else if (itemManager.isPairedTo(item, location)) {
                         // 位置匹配但凭证不匹配：锁已更换，旧钥匙失效
                         event.setCancelled(true);
@@ -160,6 +170,8 @@ public class ChestListener implements Listener {
                 event.setCancelled(false);
                 triggerManager.fire(TriggerType.KEY_OPEN, new TriggerContext(player, location));
                 fireLockTrigger(block, TriggerType.KEY_OPEN, player);
+                // 箱子所有者打开箱子后撤销他人的撬锁授权，实现"重新上锁"
+                revokeAccessIfLocker(player, block, location);
             } else {
                 event.setCancelled(true);
                 Messages.send(player, Messages.CHEST_LOCKED, Messages.CHEST_LOCKED_FORMAT);
@@ -203,6 +215,14 @@ public class ChestListener implements Listener {
                 gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_LOCK_APPLIED,
                         player.getName(), location, level));
             }
+        }
+    }
+
+    /** 若玩家为箱子所有者，撤销他人的开箱授权（实现"重新上锁"）。 */
+    private void revokeAccessIfLocker(Player player, Block block, BlockLocation location) {
+        String locker = chestService.getLocker(block);
+        if (locker != null && locker.equals(player.getUniqueId().toString())) {
+            gameManager.revokeAllAccess(location);
         }
     }
 
@@ -434,13 +454,20 @@ public class ChestListener implements Listener {
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
+        // 事件已被其他插件取消（如领地/权限插件拦截）：不得掉落锁物品或删除数据库记录
+        if (event.isCancelled()) {
+            return;
+        }
         Block block = event.getBlock();
         if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST) {
             return;
         }
-        if (!chestService.isLocked(block)) {
+        // 双箱子：破坏未上锁的一侧时同样归一化到已上锁的一侧（双箱被破坏会整体掉落）
+        Block lockedBlock = resolveLockedChestBlock(block);
+        if (lockedBlock == null) {
             return;
         }
+        block = lockedBlock;
         // 箱子被破坏时掉落锁物品并清除数据库记录
         ItemStack lockItem = chestService.unlock(block);
         if (lockItem != null) {
@@ -448,13 +475,49 @@ public class ChestListener implements Listener {
         }
     }
 
+    /**
+     * 双箱子归一化：方块本身已上锁时返回自身；方块未上锁但对侧已上锁时返回已上锁的一侧；
+     * 都不是上锁箱子时返回 null。双箱共享同一容器，未上锁侧可直接打开/破坏整个双箱，构成安全漏洞，
+     * 因此交互与破坏需统一按已上锁的一侧处理。
+     */
+    private Block resolveLockedChestBlock(Block block) {
+        if (chestService.isLocked(block)) {
+            return block;
+        }
+        if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST) {
+            return null;
+        }
+        if (!(block.getState() instanceof Chest chestState)) {
+            return null;
+        }
+        InventoryHolder holder = chestState.getInventory().getHolder();
+        if (!(holder instanceof DoubleChest doubleChest)) {
+            return null;
+        }
+        for (InventoryHolder side : new InventoryHolder[]{doubleChest.getLeftSide(), doubleChest.getRightSide()}) {
+            if (side instanceof Chest sideChest) {
+                Block sideBlock = sideChest.getBlock();
+                if (sideBlock != null && chestService.isLocked(sideBlock)) {
+                    return sideBlock;
+                }
+            }
+        }
+        return null;
+    }
+
     @EventHandler
     public void onBlockExplode(BlockExplodeEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
         dropLockFromExplodedBlocks(event.blockList());
     }
 
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
         dropLockFromExplodedBlocks(event.blockList());
     }
 

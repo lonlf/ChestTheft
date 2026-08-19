@@ -168,6 +168,21 @@ public class Messages {
     public static volatile String LOG_LOOT_CHEST_ITEM_INVALID;
     public static volatile String LOG_LOOT_CHEST_NOT_CONTAINER;
     public static volatile String LOG_PROTECTION_AUTO_UNLOCK;
+    public static volatile String LOG_STALE_READ_FAIL;
+    public static volatile String LOG_STALE_FOUND;
+    public static volatile String LOG_STALE_CLEANED;
+    public static volatile String LOG_STALE_CLEAN_FAIL;
+    public static volatile String LOG_PROTECTION_CALLBACK_FAIL;
+    public static volatile String LOG_LOOT_DISPLAY_GLOBAL_ID_FAIL;
+    public static volatile String LOG_LOOT_OPEN_PARTICLE_INVALID;
+    public static volatile String LOG_LOOT_DROPS_FORMAT_INVALID;
+    public static volatile String LOG_LOOT_DROPS_PROBABILITY_INVALID;
+    public static volatile String LOG_LOOT_FIELD_VALUE_INVALID;
+    public static volatile String LOG_LOOT_SOUND_TYPE_INVALID;
+    public static volatile String LOG_LOOT_FIELD_DEFAULT_USED;
+    public static volatile String LOG_LOOT_GLOW_COLOR_INVALID;
+    public static volatile String LOG_MESSAGES_INIT;
+    public static volatile String LOG_MESSAGES_RELOAD;
 
     // ==================== 初始化 ====================
 
@@ -179,7 +194,7 @@ public class Messages {
             Files.createDirectories(langDir);
             extractBuiltinLanguages();
             loadMessages(currentLang);
-            LOGGER.info("Messages system initialized (lang=" + currentLang + ")");
+            LOGGER.info(getLog(LOG_MESSAGES_INIT, currentLang));
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to initialize messages system", e);
         }
@@ -193,7 +208,7 @@ public class Messages {
             currentLang = lang;
         }
         loadMessages(currentLang);
-        LOGGER.info("Messages reloaded (lang=" + currentLang + ")");
+        LOGGER.info(getLog(LOG_MESSAGES_RELOAD, currentLang));
     }
 
     /** 获取玩家消息：& 颜色码转 § 并替换 {0}, {1} 等占位符。 */
@@ -485,9 +500,9 @@ public class Messages {
         PAIR_NOT_LOCKER = messages.getOrDefault("pairNotLocker", "&cOnly the locker can pair a key with this lock!");
         KEY_NOT_MATCHED = messages.getOrDefault("keyNotMatched", "&cThis key does not match this lock!");
         KEY_CHANGED = messages.getOrDefault("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
-        CHEST_PROTECTED = messages.getOrDefault("chestProtected", "&cThis chest is protected by LWC/Bolt! The lock has been removed.");
-        CHEST_PROTECTED_LOCK_DENIED = messages.getOrDefault("chestProtectedLockDenied", "&cThis chest is protected by LWC/Bolt! You cannot lock it.");
-        CHEST_PROTECTED_ACCESS_DENIED = messages.getOrDefault("chestProtectedAccessDenied", "&cThis chest is protected by LWC/Bolt! You cannot operate it.");
+        CHEST_PROTECTED = messages.getOrDefault("chestProtected", "&cThis chest is protected by a protection plugin! The lock has been removed.");
+        CHEST_PROTECTED_LOCK_DENIED = messages.getOrDefault("chestProtectedLockDenied", "&cThis chest is protected by a protection plugin! You cannot lock it.");
+        CHEST_PROTECTED_ACCESS_DENIED = messages.getOrDefault("chestProtectedAccessDenied", "&cThis chest is protected by a protection plugin! You cannot operate it.");
         PLAYER_ONLY = messages.getOrDefault("playerOnly", "&cThis command can only be used by players!");
         RELOADED = messages.getOrDefault("reloaded", "&aConfiguration reloaded!");
         USAGE = messages.getOrDefault("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft reload");
@@ -539,7 +554,22 @@ public class Messages {
         LOG_LOOT_CHEST_INVALID_MATERIAL = messages.getOrDefault("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
         LOG_LOOT_CHEST_ITEM_INVALID = messages.getOrDefault("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
         LOG_LOOT_CHEST_NOT_CONTAINER = messages.getOrDefault("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
-        LOG_PROTECTION_AUTO_UNLOCK = messages.getOrDefault("logProtectionAutoUnlock", "Chest {0} is protected by LWC/Bolt, lock automatically removed");
+        LOG_PROTECTION_AUTO_UNLOCK = messages.getOrDefault("logProtectionAutoUnlock", "Chest {0} is protected by a protection plugin, lock automatically removed");
+        LOG_STALE_READ_FAIL = messages.getOrDefault("logStaleReadFail", "Failed to read stale temp grant records: {0}");
+        LOG_STALE_FOUND = messages.getOrDefault("logStaleFound", "Found {0} stale temp grant records ({1}), cleaning up...");
+        LOG_STALE_CLEANED = messages.getOrDefault("logStaleCleaned", "Cleaned stale temp grant: {0} @ {1}");
+        LOG_STALE_CLEAN_FAIL = messages.getOrDefault("logStaleCleanFail", "Failed to clean stale grant (record kept for retry): {0}");
+        LOG_PROTECTION_CALLBACK_FAIL = messages.getOrDefault("logProtectionCallbackFail", "{0} protection callback failed: {1}");
+        LOG_LOOT_DISPLAY_GLOBAL_ID_FAIL = messages.getOrDefault("logLootDisplayGlobalIdFail", "Failed to resolve block state globalId (BlockDisplay will be invisible): material={0} type={1}");
+        LOG_LOOT_OPEN_PARTICLE_INVALID = messages.getOrDefault("logLootOpenParticleInvalid", "Loot chest open particle type '{0}' is not supported by PacketEvents, ignored (use CLOUD/FLAME/SMOKE/END_ROD etc.)");
+        LOG_LOOT_DROPS_FORMAT_INVALID = messages.getOrDefault("logLootDropsFormatInvalid", "Loot chest profile '{0}' drops line '{1}' malformed, expected '<entity-identifier> <probability>'");
+        LOG_LOOT_DROPS_PROBABILITY_INVALID = messages.getOrDefault("logLootDropsProbabilityInvalid", "Loot chest profile '{0}' drops line '{1}' has an invalid probability value");
+        LOG_LOOT_FIELD_VALUE_INVALID = messages.getOrDefault("logLootFieldValueInvalid", "Loot chest profile '{0}' {1} value '{2}' invalid, ignored");
+        LOG_LOOT_SOUND_TYPE_INVALID = messages.getOrDefault("logLootSoundTypeInvalid", "Loot chest profile '{0}' open-effects sound type value '{1}' invalid, ignored");
+        LOG_LOOT_FIELD_DEFAULT_USED = messages.getOrDefault("logLootFieldDefaultUsed", "Loot chest profile '{0}' {1} value '{2}' invalid, using default {3}");
+        LOG_LOOT_GLOW_COLOR_INVALID = messages.getOrDefault("logLootGlowColorInvalid", "Loot chest profile '{0}' open-effects glow color value '{1}' invalid, ignored");
+        LOG_MESSAGES_INIT = messages.getOrDefault("logMessagesInit", "Messages system initialized (lang={0})");
+        LOG_MESSAGES_RELOAD = messages.getOrDefault("logMessagesReload", "Messages reloaded (lang={0})");
     }
 
     /**
@@ -587,9 +617,9 @@ public class Messages {
             map.put("pairSuccess", "&a钥匙已与这把锁配对！");
             map.put("pairNotLocker", "&c该锁还没有配对的钥匙，只有上锁者可以配对钥匙！");
             map.put("keyNotMatched", "&c这把钥匙与这把锁不匹配！");
-            map.put("chestProtected", "&c该箱子受 LWC/Bolt 保护，已卸下锁");
-            map.put("chestProtectedLockDenied", "&c该箱子受 LWC/Bolt 保护，无法上锁");
-            map.put("chestProtectedAccessDenied", "&c该箱子受 LWC/Bolt 保护，无法操作");
+            map.put("chestProtected", "&c该箱子受保护插件保护，已卸下锁");
+            map.put("chestProtectedLockDenied", "&c该箱子受保护插件保护，无法上锁");
+            map.put("chestProtectedAccessDenied", "&c该箱子受保护插件保护，无法操作");
             map.put("playerOnly", "&c该命令只能由玩家执行！");
             map.put("reloaded", "&a配置已重载");
             map.put("usage", "&e用法:\n&e  /chesttheft give <玩家> <物品ID> [数量]\n&e  /chesttheft setitem <物品ID>\n&e  /chesttheft check\n&e  /chesttheft reload");
@@ -634,7 +664,22 @@ public class Messages {
             map.put("logLootChestInvalidMaterial", "档案 {0} 的展示材质无效: {1}，使用默认值");
             map.put("logLootChestItemInvalid", "档案 {0} 中存在无效的战利品物品: {1}，已跳过");
             map.put("logLootChestNotContainer", "在 {0} 放置战利品箱失败: {1} 不是容器，已跳过生成");
-            map.put("logProtectionAutoUnlock", "箱子 {0} 受 LWC/Bolt 保护，已自动卸下锁");
+            map.put("logProtectionAutoUnlock", "箱子 {0} 受保护插件保护，已自动卸下锁");
+            map.put("logStaleReadFail", "读取崩溃残留的临时授权记录失败: {0}");
+            map.put("logStaleFound", "发现 {0} 条崩溃残留的临时授权记录（{1}），正在清理...");
+            map.put("logStaleCleaned", "已清理崩溃残留的临时授权: {0} @ {1}");
+            map.put("logStaleCleanFail", "清理残留授权失败（保留记录下次重试）: {0}");
+            map.put("logProtectionCallbackFail", "{0} 保护回调处理失败: {1}");
+            map.put("logLootDisplayGlobalIdFail", "无法获取方块状态 globalId（BlockDisplay 将不可见）: material={0} type={1}");
+            map.put("logLootOpenParticleInvalid", "战利品箱开箱粒子类型 '{0}' 暂不支持 PacketEvents 发包，已忽略（可用 CLOUD/FLAME/SMOKE/END_ROD 等）");
+            map.put("logLootDropsFormatInvalid", "战利品箱档案 '{0}' 的 drops 配置行 '{1}' 格式错误，应为 '<实体标识> <概率>'");
+            map.put("logLootDropsProbabilityInvalid", "战利品箱档案 '{0}' 的 drops 配置行 '{1}' 概率值无效");
+            map.put("logLootFieldValueInvalid", "战利品箱档案 '{0}' 的 {1} 配置值 '{2}' 无效，已忽略");
+            map.put("logLootSoundTypeInvalid", "战利品箱档案 '{0}' 的 open-effects sound type 配置值 '{1}' 无效，已忽略");
+            map.put("logLootFieldDefaultUsed", "战利品箱档案 '{0}' 的 {1} 配置值 '{2}' 无效，使用默认 {3}");
+            map.put("logLootGlowColorInvalid", "战利品箱档案 '{0}' 的 open-effects glow color 配置值 '{1}' 无效，已忽略");
+            map.put("logMessagesInit", "消息系统已初始化（语言: {0}）");
+            map.put("logMessagesReload", "消息已重载（语言: {0}）");
         } else {
             map.put("success", "&aPicklock successful!");
             map.put("fail", "&cPicklock failed!");
@@ -665,9 +710,9 @@ public class Messages {
             map.put("pairNotLocker", "&cOnly the locker can pair a key with this lock!");
             map.put("keyNotMatched", "&cThis key does not match this lock!");
             map.put("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
-            map.put("chestProtected", "&cThis chest is protected by LWC/Bolt! The lock has been removed.");
-            map.put("chestProtectedLockDenied", "&cThis chest is protected by LWC/Bolt! You cannot lock it.");
-            map.put("chestProtectedAccessDenied", "&cThis chest is protected by LWC/Bolt! You cannot operate it.");
+            map.put("chestProtected", "&cThis chest is protected by a protection plugin! The lock has been removed.");
+            map.put("chestProtectedLockDenied", "&cThis chest is protected by a protection plugin! You cannot lock it.");
+            map.put("chestProtectedAccessDenied", "&cThis chest is protected by a protection plugin! You cannot operate it.");
             map.put("playerOnly", "&cThis command can only be used by players!");
             map.put("reloaded", "&aConfiguration reloaded!");
             map.put("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft reload");
@@ -713,7 +758,22 @@ public class Messages {
             map.put("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
             map.put("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
             map.put("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
-            map.put("logProtectionAutoUnlock", "Chest {0} is protected by LWC/Bolt, lock automatically removed");
+            map.put("logProtectionAutoUnlock", "Chest {0} is protected by a protection plugin, lock automatically removed");
+            map.put("logStaleReadFail", "Failed to read stale temp grant records: {0}");
+            map.put("logStaleFound", "Found {0} stale temp grant records ({1}), cleaning up...");
+            map.put("logStaleCleaned", "Cleaned stale temp grant: {0} @ {1}");
+            map.put("logStaleCleanFail", "Failed to clean stale grant (record kept for retry): {0}");
+            map.put("logProtectionCallbackFail", "{0} protection callback failed: {1}");
+            map.put("logLootDisplayGlobalIdFail", "Failed to resolve block state globalId (BlockDisplay will be invisible): material={0} type={1}");
+            map.put("logLootOpenParticleInvalid", "Loot chest open particle type '{0}' is not supported by PacketEvents, ignored (use CLOUD/FLAME/SMOKE/END_ROD etc.)");
+            map.put("logLootDropsFormatInvalid", "Loot chest profile '{0}' drops line '{1}' malformed, expected '<entity-identifier> <probability>'");
+            map.put("logLootDropsProbabilityInvalid", "Loot chest profile '{0}' drops line '{1}' has an invalid probability value");
+            map.put("logLootFieldValueInvalid", "Loot chest profile '{0}' {1} value '{2}' invalid, ignored");
+            map.put("logLootSoundTypeInvalid", "Loot chest profile '{0}' open-effects sound type value '{1}' invalid, ignored");
+            map.put("logLootFieldDefaultUsed", "Loot chest profile '{0}' {1} value '{2}' invalid, using default {3}");
+            map.put("logLootGlowColorInvalid", "Loot chest profile '{0}' open-effects glow color value '{1}' invalid, ignored");
+            map.put("logMessagesInit", "Messages system initialized (lang={0})");
+            map.put("logMessagesReload", "Messages reloaded (lang={0})");
         }
         return map;
     }

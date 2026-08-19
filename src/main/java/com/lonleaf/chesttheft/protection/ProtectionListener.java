@@ -2,6 +2,7 @@ package com.lonleaf.chesttheft.protection;
 
 import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
+import com.lonleaf.chesttheft.database.Database;
 import com.lonleaf.chesttheft.event.ChestInteractEvent;
 import com.lonleaf.chesttheft.event.ChestLockEvent;
 import com.lonleaf.chesttheft.item.ItemManager;
@@ -21,9 +22,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 外部保护（LWC / Bolt）集成总调度：监听核心操作事件决定放行或阻止（受保护箱子在关闭撬锁时阻止
- * 非所有者的一切交互与上锁，保护所有者接管卸锁；启用撬锁时仅保护所有者可上锁），并装配
- * {@link BoltProtectionListener} / {@link LwcProtectionListener} 两个分插件集成类，提供共享自动卸锁处理。
+ * 外部保护集成总调度：监听核心操作事件放行/阻止，并装配八个分插件集成类。
+ * WorldGuard 与 NoBuildPlus 无领地创建自动卸锁，仅参与保护检测与临时授权。
  */
 public class ProtectionListener implements Listener {
 
@@ -31,16 +31,30 @@ public class ProtectionListener implements Listener {
     private final PluginConfig config;
     private final ChestService chestService;
     private final ItemManager itemManager;
+    private final Database database;
     /** Bolt 集成（软依赖，未安装时注册的监听器均为空操作）。 */
     private BoltProtectionListener boltProtection;
     /** LWC 集成（软依赖，未安装时不注册模块）。 */
     private LwcProtectionListener lwcProtection;
+    /** Residence 集成（软依赖，未安装时不注册监听器）。 */
+    private ResidenceProtectionListener residenceProtection;
+    /** Dominion 集成（软依赖，未安装时不注册监听器）。 */
+    private DominionProtectionListener dominionProtection;
+    /** GriefDefender 集成（软依赖，未安装时不订阅事件）。 */
+    private GriefDefenderProtectionListener griefDefenderProtection;
+    /** Towny 集成（软依赖，未安装时不注册监听器）。 */
+    private TownyProtectionListener townyProtection;
+    /** WorldGuard 集成（软依赖，未安装时不注册监听器）。 */
+    private WorldGuardProtectionListener worldGuardProtection;
+    /** NoBuildPlus 集成（软依赖，未安装时不注册监听器）。 */
+    private NoBuildPlusProtectionListener noBuildPlusProtection;
 
-    public ProtectionListener(Plugin plugin, PluginConfig config, ChestService chestService, ItemManager itemManager) {
+    public ProtectionListener(Plugin plugin, PluginConfig config, ChestService chestService, ItemManager itemManager, Database database) {
         this.plugin = plugin;
         this.config = config;
         this.chestService = chestService;
         this.itemManager = itemManager;
+        this.database = database;
     }
 
     // ==================== 本插件核心操作事件（共享，LWC / Bolt 通用） ====================
@@ -67,8 +81,19 @@ public class ProtectionListener implements Listener {
             Messages.send(player, Messages.CHEST_PROTECTED, Messages.CHEST_PROTECTED_FORMAT);
             return;
         }
+        // 无所有者保护（如 NoBuildPlus 世界 flag 保护）：没有"保护所有者"可接管卸锁，
+        // 放行本插件上锁者本人（可正常交互卸锁），仅阻止其他玩家的操作，避免箱子被锁死
+        if (ProtectionUtil.isOwnerlessProtected(block) && isLocker(player, block)) {
+            return;
+        }
         event.setCancelled(true);
         Messages.send(player, Messages.CHEST_PROTECTED_ACCESS_DENIED, Messages.CHEST_PROTECTED_ACCESS_DENIED_FORMAT);
+    }
+
+    /** 判断玩家是否为该箱子的本插件上锁者。 */
+    private boolean isLocker(Player player, Block block) {
+        String lockerUuid = chestService.getLocker(block);
+        return lockerUuid != null && lockerUuid.equals(player.getUniqueId().toString());
     }
 
     /**
@@ -94,13 +119,57 @@ public class ProtectionListener implements Listener {
 
     // ==================== 装配与注销 ====================
 
-    /** 注册监听：Bolt 作为 Bukkit 监听器注册并订阅保护创建事件；LWC 注册脚本模块（均仅对应插件存在时生效）。 */
+    /** 注册监听：Bolt/LWC/Residence/Dominion/GriefDefender/Towny/WorldGuard/NoBuildPlus 各集成模块（均仅对应插件存在时生效）。 */
     public void register() {
-        boltProtection = new BoltProtectionListener(plugin, config, this::handleProtectionCreated);
-        lwcProtection = new LwcProtectionListener(plugin, this::handleProtectionCreated);
-        Bukkit.getPluginManager().registerEvents(boltProtection, plugin);
-        boltProtection.register();
-        lwcProtection.register();
+        // 各模块必须在对应保护插件存在时才创建：@EventHandler 方法签名引用插件类型（如
+        // ResidenceCreationEvent），类加载验证时会解析签名并加载缺失插件类，导致 NoClassDefFoundError
+        if (Bukkit.getPluginManager().getPlugin("Bolt") != null) {
+            boltProtection = new BoltProtectionListener(plugin, config, this::handleProtectionCreated, database);
+            Bukkit.getPluginManager().registerEvents(boltProtection, plugin);
+            boltProtection.register();
+            // 清理上次崩溃残留的临时访问授权（Bolt access 为持久化写入，崩溃后不会自动消失）
+            boltProtection.cleanupStale();
+        }
+        if (Bukkit.getPluginManager().getPlugin("LWC") != null) {
+            lwcProtection = new LwcProtectionListener(plugin, this::handleProtectionCreated, database);
+            Bukkit.getPluginManager().registerEvents(lwcProtection, plugin);
+            lwcProtection.register();
+            // 清理上次崩溃残留的临时授权（volatile 权限需按记录移除）
+            lwcProtection.cleanupStale();
+        }
+        if (Bukkit.getPluginManager().getPlugin("Residence") != null) {
+            residenceProtection = new ResidenceProtectionListener(plugin, this::handleProtectionCreated, database);
+            Bukkit.getPluginManager().registerEvents(residenceProtection, plugin);
+            residenceProtection.cleanupStale();
+            residenceProtection.register();
+        }
+        if (Bukkit.getPluginManager().getPlugin("Dominion") != null) {
+            dominionProtection = new DominionProtectionListener(plugin, this::handleProtectionCreated, database);
+            Bukkit.getPluginManager().registerEvents(dominionProtection, plugin);
+            dominionProtection.cleanupStale();
+            dominionProtection.register();
+        }
+        if (Bukkit.getPluginManager().getPlugin("GriefDefender") != null) {
+            griefDefenderProtection = new GriefDefenderProtectionListener(plugin, this::handleProtectionCreated, database);
+            griefDefenderProtection.cleanupStale();
+            griefDefenderProtection.register();
+        }
+        if (Bukkit.getPluginManager().getPlugin("Towny") != null) {
+            townyProtection = new TownyProtectionListener(plugin, this::handleProtectionCreated, database);
+            Bukkit.getPluginManager().registerEvents(townyProtection, plugin);
+            townyProtection.cleanupStale();
+            townyProtection.register();
+        }
+        if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null) {
+            worldGuardProtection = new WorldGuardProtectionListener(plugin, database);
+            Bukkit.getPluginManager().registerEvents(worldGuardProtection, plugin);
+            worldGuardProtection.cleanupStale();
+        }
+        if (Bukkit.getPluginManager().getPlugin("NoBuildPlus") != null) {
+            noBuildPlusProtection = new NoBuildPlusProtectionListener(plugin, database);
+            Bukkit.getPluginManager().registerEvents(noBuildPlusProtection, plugin);
+            noBuildPlusProtection.cleanupStale();
+        }
     }
 
     /** 注销监听（插件禁用时调用）。 */
@@ -112,6 +181,30 @@ public class ProtectionListener implements Listener {
         if (lwcProtection != null) {
             lwcProtection.unregister();
             lwcProtection = null;
+        }
+        if (residenceProtection != null) {
+            residenceProtection.unregister();
+            residenceProtection = null;
+        }
+        if (dominionProtection != null) {
+            dominionProtection.unregister();
+            dominionProtection = null;
+        }
+        if (griefDefenderProtection != null) {
+            griefDefenderProtection.unregister();
+            griefDefenderProtection = null;
+        }
+        if (townyProtection != null) {
+            townyProtection.unregister();
+            townyProtection = null;
+        }
+        if (worldGuardProtection != null) {
+            worldGuardProtection.cleanup();
+            worldGuardProtection = null;
+        }
+        if (noBuildPlusProtection != null) {
+            noBuildPlusProtection.cleanup();
+            noBuildPlusProtection = null;
         }
     }
 

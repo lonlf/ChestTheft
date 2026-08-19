@@ -97,7 +97,7 @@ public final class ChestTheft extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config, lockConfigManager, triggerManager), this);
         // 保护监听：监听本插件核心操作事件（受保护箱子阻止上锁/交互、保护所有者接管卸锁），
         // 并订阅 LWC/Bolt 保护创建回调（已上锁箱子被保护且关闭撬锁时自动卸锁）
-        protectionListener = new ProtectionListener(this, config, chestService, itemManager);
+        protectionListener = new ProtectionListener(this, config, chestService, itemManager, databaseManager.getDatabase());
         protectionListener.register();
         getServer().getPluginManager().registerEvents(protectionListener, this);
         // 小游戏管理器监听：撬锁中受击或移动超范围时按配置中止游戏

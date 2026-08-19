@@ -1,5 +1,6 @@
 package com.lonleaf.chesttheft.lootchest;
 
+import com.lonleaf.chesttheft.config.Messages;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
 import com.github.retrooper.packetevents.protocol.particle.data.ParticleData;
@@ -97,6 +98,34 @@ public final class LootChestDisplay {
     }
 
     /**
+     * 生成覆盖双箱的发光展示实体：左右两个真实方块状态（type=left/type=right）的 BlockDisplay
+     * 分别放置于两个箱子块上，无缩放拉伸、还原真实双箱外观；返回两个实体 ID（先左后右）。
+     */
+    public static int[] spawnGlowDisplayDouble(Block block, Block other, int argb, Collection<UUID> viewers) {
+        int leftId = spawnGlowDisplayHalf(block,
+                com.github.retrooper.packetevents.protocol.world.states.enums.Type.LEFT, argb, viewers);
+        int rightId = spawnGlowDisplayHalf(other,
+                com.github.retrooper.packetevents.protocol.world.states.enums.Type.RIGHT, argb, viewers);
+        return new int[]{leftId, rightId};
+    }
+
+    /** 生成单块（含双箱半块）的发光展示实体：scale 微扩 1.001 防 z-fighting；左右类型以真实方块数据为准。 */
+    private static int spawnGlowDisplayHalf(Block block,
+                                            com.github.retrooper.packetevents.protocol.world.states.enums.Type fallbackChestType,
+                                            int argb, Collection<UUID> viewers) {
+        WrapperEntity entity = new WrapperEntity(EntityTypes.BLOCK_DISPLAY);
+        entity.consumeEntityMeta(BlockDisplayMeta.class, meta -> {
+            meta.setTranslation(new Vector3f(-0.5f, 0f, -0.5f));
+            meta.setScale(new Vector3f(1.001f, 1.001f, 1.001f));
+            meta.setBlockState(blockStateOf(block, fallbackChestType));
+            meta.setGlowing(true);
+            meta.setGlowColorOverride(argb);
+        });
+        spawnTo(entity, block.getLocation(), viewers);
+        return entity.getEntityId();
+    }
+
+    /**
      * 同步发光展示实体的可见玩家集合（仅钥匙持有者可见）：
      * 新增观众补发 spawn + metadata，不再可见的观众广播销毁；离线的旧观众无需处理（客户端已断开）。
      */
@@ -116,6 +145,13 @@ public final class LootChestDisplay {
             if (!target.contains(viewer) && Bukkit.getPlayer(viewer) != null) {
                 entity.removeViewer(viewer);
             }
+        }
+    }
+
+    /** 同步多个发光展示实体的可见玩家集合（双箱左右两个实体同步同一批观众）。 */
+    public static void syncGlowViewers(int[] entityIds, Collection<UUID> holders) {
+        for (int entityId : entityIds) {
+            syncGlowViewers(entityId, holders);
         }
     }
 
@@ -188,14 +224,22 @@ public final class LootChestDisplay {
             state = WrappedBlockState.getDefaultState(StateTypes.CHEST);
         }
         if (state == null || state.getGlobalId() == 0) {
-            Bukkit.getLogger().warning("[ChestTheft] 无法获取方块状态 globalId（BlockDisplay 将不可见）: material="
-                    + material + " type=" + type);
+            Bukkit.getLogger().warning(Messages.getLog(Messages.LOG_LOOT_DISPLAY_GLOBAL_ID_FAIL, material, type));
         }
         return state;
     }
 
     /** 按真实方块生成全局方块状态：材质默认状态 + 复制朝向（箱子/陷阱箱/木桶等含朝向的方块）。 */
     private static WrappedBlockState blockStateOf(Block block) {
+        return blockStateOf(block, null);
+    }
+
+    /**
+     * 按真实方块生成全局方块状态：材质默认状态 + 复制朝向，双箱两侧额外复制左右类型
+     * （type=left/right，展示实体还原真实双箱外观）；fallbackChestType 为单箱数据时的兜底类型。
+     */
+    private static WrappedBlockState blockStateOf(Block block,
+                                                  com.github.retrooper.packetevents.protocol.world.states.enums.Type fallbackChestType) {
         WrappedBlockState state = blockState(block.getType());
         if (state == null) {
             return state;
@@ -203,6 +247,21 @@ public final class LootChestDisplay {
         org.bukkit.block.data.BlockData data = block.getState().getBlockData();
         if (data instanceof org.bukkit.block.data.Directional directional) {
             state.setFacing(mapFacing(directional.getFacing()));
+        }
+        if (state.hasProperty(com.github.retrooper.packetevents.protocol.world.states.type.StateValue.TYPE)) {
+            if (data instanceof org.bukkit.block.data.type.Chest chestData) {
+                // 双箱左右属性以真实方块数据为准（单箱 SINGLE 时用兜底类型补全）
+                org.bukkit.block.data.type.Chest.Type chestType = chestData.getType();
+                if (chestType == org.bukkit.block.data.type.Chest.Type.LEFT) {
+                    state.setTypeData(com.github.retrooper.packetevents.protocol.world.states.enums.Type.LEFT);
+                } else if (chestType == org.bukkit.block.data.type.Chest.Type.RIGHT) {
+                    state.setTypeData(com.github.retrooper.packetevents.protocol.world.states.enums.Type.RIGHT);
+                } else if (fallbackChestType != null) {
+                    state.setTypeData(fallbackChestType);
+                }
+            } else if (fallbackChestType != null) {
+                state.setTypeData(fallbackChestType);
+            }
         }
         return state;
     }
@@ -299,8 +358,7 @@ public final class LootChestDisplay {
                         0.05f, particles.getCount());
                 sendToNearby(loc, 64.0, wrapper);
             } else {
-                Bukkit.getLogger().warning("战利品箱开箱粒子类型 '" + particles.getType().name()
-                        + "' 暂不支持 PacketEvents 发包，已忽略（可用 CLOUD/FLAME/SMOKE/END_ROD 等）");
+                Bukkit.getLogger().warning(Messages.getLog(Messages.LOG_LOOT_OPEN_PARTICLE_INVALID, particles.getType().name()));
             }
         }
         // 发光：EntityLib meta（发光位 + glow color override），改动自动同步给全部可见玩家，

@@ -84,7 +84,7 @@ public class LootChestProfile {
             String trimmed = line.trim();
             int lastSpace = trimmed.lastIndexOf(' ');
             if (lastSpace < 0) {
-                logger.warning("战利品箱档案 '" + profileId + "' 的 drops 配置行 '" + trimmed + "' 格式错误，应为 '<实体标识> <概率>'");
+                logger.warning(Messages.getLog(Messages.LOG_LOOT_DROPS_FORMAT_INVALID, profileId, trimmed));
                 continue;
             }
             String identifier = trimmed.substring(0, lastSpace).trim();
@@ -93,7 +93,7 @@ public class LootChestProfile {
             try {
                 probability = Double.parseDouble(probStr);
             } catch (NumberFormatException e) {
-                logger.warning("战利品箱档案 '" + profileId + "' 的 drops 配置行 '" + trimmed + "' 概率值无效");
+                logger.warning(Messages.getLog(Messages.LOG_LOOT_DROPS_PROBABILITY_INVALID, profileId, trimmed));
                 continue;
             }
             result.add(new DropEntry(identifier, Math.max(0.0, Math.min(1.0, probability))));
@@ -237,7 +237,7 @@ public class LootChestProfile {
             try {
                 return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                logger.warning("战利品箱档案 '" + profileId + "' 的 " + field + " 配置值 '" + value + "' 无效，已忽略");
+                logger.warning(Messages.getLog(Messages.LOG_LOOT_FIELD_VALUE_INVALID, profileId, field, value));
                 return null;
             }
         }
@@ -268,7 +268,7 @@ public class LootChestProfile {
             try {
                 return Enum.valueOf(Sound.class, trimmed.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                logger.warning("战利品箱档案 '" + profileId + "' 的 open-effects sound type 配置值 '" + value + "' 无效，已忽略");
+                logger.warning(Messages.getLog(Messages.LOG_LOOT_SOUND_TYPE_INVALID, profileId, value));
                 return null;
             }
         }
@@ -281,7 +281,7 @@ public class LootChestProfile {
             try {
                 return Double.parseDouble(value.trim());
             } catch (NumberFormatException e) {
-                logger.warning("战利品箱档案 '" + profileId + "' 的 " + field + " 配置值 '" + value + "' 无效，使用默认 " + def);
+                logger.warning(Messages.getLog(Messages.LOG_LOOT_FIELD_DEFAULT_USED, profileId, field, value, def));
                 return def;
             }
         }
@@ -318,8 +318,7 @@ public class LootChestProfile {
                 String[] tokens = value.trim().split("\\s+");
                 Color color = ColorParser.parse(tokens[0]);
                 if (color == null) {
-                    logger.warning("战利品箱档案 '" + profileId + "' 的 open-effects glow color 配置值 '"
-                            + tokens[0] + "' 无效，已忽略");
+                    logger.warning(Messages.getLog(Messages.LOG_LOOT_GLOW_COLOR_INVALID, profileId, tokens[0]));
                     return null;
                 }
                 long duration = tokens.length > 1

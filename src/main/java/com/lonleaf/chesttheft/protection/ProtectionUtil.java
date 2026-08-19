@@ -8,8 +8,7 @@ import java.util.UUID;
 import java.util.logging.Logger;
 
 /**
- * 外部保护插件（LWC / Bolt）集成工具：检查方块是否被保护、获取保护所有者。
- * Bolt 通过 Bukkit ServicesManager 加载 API；LWC 直接获取插件实例。
+ * 外部保护插件集成工具：检查方块是否被保护、获取保护所有者（无所有者概念的保护返回 null）。
  */
 public class ProtectionUtil {
 
@@ -17,9 +16,11 @@ public class ProtectionUtil {
 
     private ProtectionUtil() {}
 
-    /** 检测方块是否被 LWC 或 Bolt 保护。 */
+    /** 检测方块是否被 LWC、Bolt、Residence、Dominion、GriefDefender、Towny、WorldGuard 或 NoBuildPlus 保护。 */
     public static boolean isProtected(Block block) {
-        return isBoltProtected(block) || isLWCProtected(block);
+        return isBoltProtected(block) || isLWCProtected(block) || isResidenceProtected(block)
+                || isDominionProtected(block) || isGriefDefenderProtected(block) || isTownyProtected(block)
+                || isWorldGuardProtected(block) || isNoBuildPlusProtected(block);
     }
 
     /** 获取保护的所有者 UUID；无保护或无法获取时返回 null。 */
@@ -53,13 +54,95 @@ public class ProtectionUtil {
                 LOGGER.fine("LWC owner lookup failed: " + e.getMessage());
             }
         }
+        // Residence 兜底
+        if (isResidenceAvailable()) {
+            try {
+                com.bekvon.bukkit.residence.protection.ClaimedResidence res =
+                        com.bekvon.bukkit.residence.api.ResidenceApi.getResidenceManager().getByLoc(block.getLocation());
+                if (res != null) {
+                    return res.getOwnerUUID();
+                }
+            } catch (Exception e) {
+                LOGGER.fine("Residence owner lookup failed: " + e.getMessage());
+            }
+        }
+        // Dominion 兜底
+        if (isDominionAvailable()) {
+            try {
+                cn.lunadeer.dominion.api.DominionAPI api = cn.lunadeer.dominion.api.DominionAPI.getInstance();
+                if (api != null) {
+                    cn.lunadeer.dominion.api.dtos.DominionDTO dominion = api.getDominion(block.getLocation());
+                    if (dominion != null) {
+                        return dominion.getOwner();
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.fine("Dominion owner lookup failed: " + e.getMessage());
+            }
+        }
+        // GriefDefender 兜底
+        if (isGriefDefenderAvailable()) {
+            try {
+                com.griefdefender.api.claim.Claim claim =
+                        com.griefdefender.api.GriefDefender.getCore().getClaimAt(block.getLocation());
+                if (claim != null && !claim.isWilderness()) {
+                    return claim.getOwnerUniqueId();
+                }
+            } catch (Exception e) {
+                LOGGER.fine("GriefDefender owner lookup failed: " + e.getMessage());
+            }
+        }
+        // Towny 兜底
+        if (isTownyAvailable()) {
+            try {
+                com.palmergames.bukkit.towny.object.TownBlock townBlock =
+                        com.palmergames.bukkit.towny.TownyAPI.getInstance().getTownBlock(block.getLocation());
+                if (townBlock != null) {
+                    com.palmergames.bukkit.towny.object.Town town = townBlock.getTownOrNull();
+                    if (town != null && town.getMayor() != null) {
+                        return town.getMayor().getUUID();
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.fine("Towny owner lookup failed: " + e.getMessage());
+            }
+        }
+        // WorldGuard 兜底（遍历所在区域，取第一个有所有者的区域；NoBuildPlus 无所有者概念，不参与）
+        if (isWorldGuardAvailable()) {
+            try {
+                com.sk89q.worldguard.protection.regions.RegionQuery query =
+                        com.sk89q.worldguard.WorldGuard.getInstance().getPlatform().getRegionContainer().createQuery();
+                com.sk89q.worldguard.protection.ApplicableRegionSet set =
+                        query.getApplicableRegions(com.sk89q.worldedit.bukkit.BukkitAdapter.adapt(block.getLocation()));
+                for (com.sk89q.worldguard.protection.regions.ProtectedRegion region : set.getRegions()) {
+                    if (isGlobalRegion(region)) continue;
+                    java.util.Set<UUID> owners = region.getOwners().getUniqueIds();
+                    if (!owners.isEmpty()) {
+                        return owners.iterator().next();
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.fine("WorldGuard owner lookup failed: " + e.getMessage());
+            }
+        }
         return null;
     }
 
-    /** 判断玩家是否为保护所有者。 */
+    /** 判断玩家是否为保护所有者（拥有 chesttheft.protectionOwner 权限者一律视为所有者）。 */
     public static boolean isOwner(Block block, Player player) {
+        if (player.hasPermission("chesttheft.protectionOwner")) {
+            return true;
+        }
         UUID owner = getOwnerUUID(block);
         return owner != null && owner.equals(player.getUniqueId());
+    }
+
+    /**
+     * 是否受"无所有者保护"（如 NoBuildPlus 世界 flag 保护）：此类保护没有所有者概念，
+     * 交互权限归本插件上锁者本人（仅阻止非上锁者的操作），避免箱子被锁死无法操作。
+     */
+    public static boolean isOwnerlessProtected(Block block) {
+        return isProtected(block) && getOwnerUUID(block) == null;
     }
 
     // ==================== Bolt ====================
@@ -121,5 +204,131 @@ public class ProtectionUtil {
             }
         } catch (Exception ignored) {}
         return null;
+    }
+
+    // ==================== Residence ====================
+
+    /** 检查方块是否位于 Residence 领地内。 */
+    private static boolean isResidenceProtected(Block block) {
+        if (!isResidenceAvailable()) return false;
+        try {
+            com.bekvon.bukkit.residence.protection.ClaimedResidence res =
+                    com.bekvon.bukkit.residence.api.ResidenceApi.getResidenceManager().getByLoc(block.getLocation());
+            return res != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isResidenceAvailable() {
+        return Bukkit.getPluginManager().getPlugin("Residence") != null;
+    }
+
+    // ==================== Dominion ====================
+
+    /** 检查方块是否位于 Dominion 领地内。 */
+    private static boolean isDominionProtected(Block block) {
+        if (!isDominionAvailable()) return false;
+        try {
+            cn.lunadeer.dominion.api.DominionAPI api = cn.lunadeer.dominion.api.DominionAPI.getInstance();
+            return api != null && api.getDominion(block.getLocation()) != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isDominionAvailable() {
+        return Bukkit.getPluginManager().getPlugin("Dominion") != null;
+    }
+
+    // ==================== GriefDefender ====================
+
+    /** 检查方块是否位于 GriefDefender 领地（非荒野）内。 */
+    private static boolean isGriefDefenderProtected(Block block) {
+        if (!isGriefDefenderAvailable()) return false;
+        try {
+            com.griefdefender.api.claim.Claim claim =
+                    com.griefdefender.api.GriefDefender.getCore().getClaimAt(block.getLocation());
+            return claim != null && !claim.isWilderness();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isGriefDefenderAvailable() {
+        return Bukkit.getPluginManager().getPlugin("GriefDefender") != null;
+    }
+
+    // ==================== Towny ====================
+
+    /** 检查方块是否位于 Towny 城镇领地（地块）内。 */
+    private static boolean isTownyProtected(Block block) {
+        if (!isTownyAvailable()) return false;
+        try {
+            return com.palmergames.bukkit.towny.TownyAPI.getInstance().getTownBlock(block.getLocation()) != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isTownyAvailable() {
+        return Bukkit.getPluginManager().getPlugin("Towny") != null;
+    }
+
+    // ==================== WorldGuard ====================
+
+    /**
+     * 检查方块是否位于 WorldGuard 区域（region）内。
+     * 排除全局区域 __global__（覆盖整个世界的默认区域，无实际保护意义）。
+     */
+    private static boolean isWorldGuardProtected(Block block) {
+        if (!isWorldGuardAvailable()) return false;
+        try {
+            com.sk89q.worldguard.protection.regions.RegionQuery query =
+                    com.sk89q.worldguard.WorldGuard.getInstance().getPlatform().getRegionContainer().createQuery();
+            com.sk89q.worldguard.protection.ApplicableRegionSet set =
+                    query.getApplicableRegions(com.sk89q.worldedit.bukkit.BukkitAdapter.adapt(block.getLocation()));
+            for (com.sk89q.worldguard.protection.regions.ProtectedRegion region : set.getRegions()) {
+                if (!isGlobalRegion(region)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        return false;
+    }
+
+    /** WorldGuard 全局区域（__global__）判断。 */
+    private static boolean isGlobalRegion(com.sk89q.worldguard.protection.regions.ProtectedRegion region) {
+        return "__global__".equals(region.getId());
+    }
+
+    private static boolean isWorldGuardAvailable() {
+        return Bukkit.getPluginManager().getPlugin("WorldGuard") != null;
+    }
+
+    // ==================== NoBuildPlus ====================
+
+    /**
+     * 检查方块所在世界是否被 NoBuildPlus 保护（启用了容器/交互/破坏相关 flag）。
+     * NoBuildPlus 为世界级 flag 保护，无区域与所有者概念，只参与"受保护"判定，不参与所有者查询。
+     */
+    private static boolean isNoBuildPlusProtected(Block block) {
+        if (!isNoBuildPlusAvailable()) return false;
+        try {
+            String worldName = block.getWorld().getName();
+            p1xel.nobuildplus.api.NBPAPI api = p1xel.nobuildplus.NoBuildPlus.getInstance().getAPI();
+            if (api == null || !api.isWorldEnabled(worldName)) return false;
+            return api.canExecute(worldName, p1xel.nobuildplus.Flags.container)
+                    || api.canExecute(worldName, p1xel.nobuildplus.Flags.use)
+                    || api.canExecute(worldName, p1xel.nobuildplus.Flags.destroy);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isNoBuildPlusAvailable() {
+        return Bukkit.getPluginManager().getPlugin("NoBuildPlus") != null;
     }
 }

@@ -27,6 +27,11 @@ public final class BlockLocation {
         return new BlockLocation(location.getWorld().getName(), location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
+    /** 从世界名与方块坐标构造（数据库反序列化等场景）。 */
+    public static BlockLocation from(String world, int x, int y, int z) {
+        return new BlockLocation(world, x, y, z);
+    }
+
     /** 从字符串解析位置，格式为 world,x,y,z；格式非法时返回 null。 */
     public static BlockLocation parse(String data) {
         if (data == null || data.isEmpty()) {

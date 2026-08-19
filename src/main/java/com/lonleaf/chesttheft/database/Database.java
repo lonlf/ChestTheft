@@ -3,6 +3,9 @@ package com.lonleaf.chesttheft.database;
 import com.lonleaf.chesttheft.model.BlockLocation;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.List;
+import java.util.UUID;
+
 public interface Database {
     void init();
 
@@ -32,6 +35,18 @@ public interface Database {
 
     /** 解除锁定并返回保存的锁物品，无记录时返回 null。 */
     ItemStack unlock(BlockLocation location);
+
+    /**
+     * 记录一次临时授权（打开容器前授予，供插件崩溃后启动清理残留）。
+     * 同一 (插件, 位置, 玩家) 只会存在一条有效记录：撤销后即删除，重新授权时覆盖写入。
+     */
+    void recordTempGrant(String pluginType, BlockLocation location, UUID playerUuid, String extra);
+
+    /** 返回指定插件类型的全部临时授权记录（启动清理用）。 */
+    List<TempGrantRecord> getTempGrants(String pluginType);
+
+    /** 删除一条临时授权记录（对应权限已成功撤销）。 */
+    void deleteTempGrant(String pluginType, BlockLocation location, UUID playerUuid);
 
     void close();
 }

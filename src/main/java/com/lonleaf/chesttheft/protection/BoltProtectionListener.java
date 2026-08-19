@@ -1,6 +1,9 @@
 package com.lonleaf.chesttheft.protection;
 
+import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
+import com.lonleaf.chesttheft.database.Database;
+import com.lonleaf.chesttheft.database.TempGrantRecord;
 import com.lonleaf.chesttheft.event.ChestOpenEvent;
 import com.lonleaf.chesttheft.model.BlockLocation;
 import org.bukkit.Bukkit;
@@ -35,15 +38,18 @@ public class BoltProtectionListener implements Listener {
 
     private final Plugin plugin;
     private final PluginConfig config;
+    /** 临时授权数据库记录（崩溃后启动清理恢复残留授权）。 */
+    private final Database database;
     /** 保护创建回调（自动卸锁逻辑，由 ProtectionListener 提供）。 */
     private final Consumer<Block> protectionCreatedHandler;
     /** 临时授权记录：箱子位置 → 玩家 → 授权信息；玩家关闭容器或退出时恢复。 */
     private final Map<BlockLocation, Map<UUID, TempGrant>> temporaryAccesses = new HashMap<>();
 
-    public BoltProtectionListener(Plugin plugin, PluginConfig config, Consumer<Block> protectionCreatedHandler) {
+    public BoltProtectionListener(Plugin plugin, PluginConfig config, Consumer<Block> protectionCreatedHandler, Database database) {
         this.plugin = plugin;
         this.config = config;
         this.protectionCreatedHandler = protectionCreatedHandler;
+        this.database = database;
     }
 
     /** 订阅 Bolt 保护创建事件（仅 Bolt 插件存在时）。 */
@@ -93,9 +99,25 @@ public class BoltProtectionListener implements Listener {
             Map<String, String> access = protection.getAccess();
             String key = "player:" + uuid;
             original = access.get(key);
-            access.put(key, "normal");
-            bolt.saveProtection(protection);
-            granted = true;
+            // 先落库（崩溃保险）：记录授权前原值，启动清理时据此恢复；Bolt access 为持久化写入，
+            // 崩溃后残留的临时授权会在下次启动按记录移除/恢复
+            try {
+                database.recordTempGrant("bolt", location, uuid, original == null ? "" : original);
+            } catch (Exception e) {
+                plugin.getLogger().fine("记录临时授权失败: " + e.getMessage());
+            }
+            try {
+                access.put(key, "normal");
+                bolt.saveProtection(protection);
+                granted = true;
+            } catch (Exception e) {
+                // 写入失败：删除记录避免留下无权限的无效记录
+                plugin.getLogger().fine("Bolt temp grant failed: " + e.getMessage());
+                try {
+                    database.deleteTempGrant("bolt", location, uuid);
+                } catch (Exception ignored) {
+                }
+            }
         }
         Map<UUID, TempGrant> grants = temporaryAccesses.computeIfAbsent(location, k -> new HashMap<>());
         if (grants.containsKey(uuid)) {
@@ -176,6 +198,12 @@ public class BoltProtectionListener implements Listener {
     private void revokeGrant(BoltAPI bolt, BlockLocation location, UUID uuid, TempGrant grant) {
         if (grant.granted) {
             restoreAccess(bolt, location, uuid, grant.originalAccess);
+            // 权限已恢复，删除数据库记录（崩溃清理不再处理该条）
+            try {
+                database.deleteTempGrant("bolt", location, uuid);
+            } catch (Exception e) {
+                plugin.getLogger().fine("清理临时授权记录失败: " + e.getMessage());
+            }
         }
         if (!grant.nospamBefore) {
             Player player = Bukkit.getPlayer(uuid);
@@ -186,6 +214,60 @@ public class BoltProtectionListener implements Listener {
         if (config.isDebug()) {
             plugin.getLogger().info("撤销临时 Bolt 打开权限: " + uuid + " @ " + location);
         }
+    }
+
+    // ==================== 崩溃残留清理 ====================
+
+    /**
+     * 插件启动时依据数据库记录清理崩溃残留的 Bolt 访问授权（access 为持久化写入，崩溃后不会自动消失）：
+     * 逐条按记录恢复 access 原值，成功后删除记录；恢复失败的记录保留，下次启动重试。
+     */
+    public void cleanupStale() {
+        List<TempGrantRecord> records;
+        try {
+            records = database.getTempGrants("bolt");
+        } catch (Exception e) {
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_STALE_READ_FAIL, e.getMessage()));
+            return;
+        }
+        if (records.isEmpty()) {
+            return;
+        }
+        plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_FOUND, records.size(), "bolt"));
+        for (TempGrantRecord record : records) {
+            BlockLocation loc = record.getLocation();
+            World world = loc.toWorld();
+            if (world == null) {
+                // 世界已不存在：对应保护数据随世界移除，直接清理记录
+                try {
+                    database.deleteTempGrant("bolt", loc, record.getPlayerUuid());
+                } catch (Exception e) {
+                    plugin.getLogger().fine("清理失效记录失败: " + e.getMessage());
+                }
+                continue;
+            }
+            Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
+            try {
+                revokeFromRecord(block, record.getPlayerUuid(), record.getExtra());
+                database.deleteTempGrant("bolt", loc, record.getPlayerUuid());
+                plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_CLEANED, "bolt", loc));
+            } catch (Exception e) {
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_STALE_CLEAN_FAIL, e.getMessage()));
+            }
+        }
+    }
+
+    /** 依据记录撤销崩溃残留的 Bolt 访问授权（玩家可能离线，用 UUID 级恢复）。 */
+    private void revokeFromRecord(Block block, UUID playerUuid, String extra) {
+        if (Bukkit.getPluginManager().getPlugin("Bolt") == null) {
+            return;
+        }
+        BoltAPI bolt = Bukkit.getServicesManager().load(BoltAPI.class);
+        if (bolt == null) {
+            return;
+        }
+        // extra 为空串表示授权前原本无 access 记录（撤销即移除）；否则恢复原值
+        restoreAccess(bolt, block, playerUuid, extra.isEmpty() ? null : extra);
     }
 
     /**
@@ -274,7 +356,7 @@ public class BoltProtectionListener implements Listener {
                 try {
                     protectionCreatedHandler.accept(event.getBlock());
                 } catch (Exception e) {
-                    plugin.getLogger().warning("Bolt 保护回调处理失败: " + e.getMessage());
+                    plugin.getLogger().warning(Messages.getLog(Messages.LOG_PROTECTION_CALLBACK_FAIL, "Bolt", e.getMessage()));
                 }
             }
         };

@@ -131,6 +131,12 @@ public class GameManager implements Listener {
         return true;
     }
 
+    /** 撤销指定箱子的全部开箱授权（箱子所有者打开箱子后调用，实现"重新上锁"）。 */
+    public void revokeAllAccess(BlockLocation location) {
+        grantedAccess.values().forEach(grants -> grants.remove(location));
+        grantedAccess.values().removeIf(Map::isEmpty);
+    }
+
     /** 消费一次性授权（打开箱子后调用）；限时授权不受影响。 */
     public void consumeOnceAccess(Player player, BlockLocation location) {
         Map<BlockLocation, AccessGrant> grants = grantedAccess.get(player.getUniqueId());

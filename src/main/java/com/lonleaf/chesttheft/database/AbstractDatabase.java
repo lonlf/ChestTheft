@@ -12,12 +12,17 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public abstract class AbstractDatabase implements Database {
     protected static final String TABLE = "chest_data";
+    /** 临时授权记录表：记录各保护插件打开容器的临时权限，崩溃后启动清理残留。 */
+    protected static final String TEMP_GRANT_TABLE = "temp_grants";
 
     protected final Logger logger;
     protected final boolean debug;
@@ -62,6 +67,22 @@ public abstract class AbstractDatabase implements Database {
         try (Statement stmt = connection.createStatement()) {
             stmt.executeUpdate("ALTER TABLE " + TABLE + " ADD COLUMN lock_level INT NOT NULL DEFAULT 0");
         } catch (SQLException ignored) {
+        }
+        // 临时授权记录表（崩溃残留清理用，独立一张表）
+        String tempSql = "CREATE TABLE IF NOT EXISTS " + TEMP_GRANT_TABLE + " ("
+                + "id " + idColumn() + ","
+                + "plugin VARCHAR(32) NOT NULL,"
+                + "world VARCHAR(255) NOT NULL,"
+                + "x INT NOT NULL,"
+                + "y INT NOT NULL,"
+                + "z INT NOT NULL,"
+                + "player VARCHAR(36) NOT NULL,"
+                + "extra TEXT NOT NULL DEFAULT ''"
+                + ")";
+        try (Statement stmt = connection.createStatement()) {
+            stmt.executeUpdate(tempSql);
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_CREATE_TABLE_FAIL, TEMP_GRANT_TABLE), e);
         }
     }
 
@@ -260,6 +281,63 @@ public abstract class AbstractDatabase implements Database {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_ITEM_FAIL, location), e);
         }
         return null;
+    }
+
+    // ==================== 临时授权记录（崩溃残留清理） ====================
+
+    @Override
+    public void recordTempGrant(String pluginType, BlockLocation location, UUID playerUuid, String extra) {
+        String sql = "INSERT INTO " + TEMP_GRANT_TABLE
+                + " (plugin, world, x, y, z, player, extra) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, pluginType);
+            ps.setString(2, location.getWorld());
+            ps.setInt(3, location.getX());
+            ps.setInt(4, location.getY());
+            ps.setInt(5, location.getZ());
+            ps.setString(6, playerUuid.toString());
+            ps.setString(7, extra == null ? "" : extra);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
+        }
+    }
+
+    @Override
+    public List<TempGrantRecord> getTempGrants(String pluginType) {
+        List<TempGrantRecord> records = new ArrayList<>();
+        String sql = "SELECT world, x, y, z, player, extra FROM " + TEMP_GRANT_TABLE + " WHERE plugin = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, pluginType);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    BlockLocation location = BlockLocation.from(
+                            rs.getString("world"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z"));
+                    records.add(new TempGrantRecord(pluginType, location,
+                            UUID.fromString(rs.getString("player")), rs.getString("extra")));
+                }
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, pluginType), e);
+        }
+        return records;
+    }
+
+    @Override
+    public void deleteTempGrant(String pluginType, BlockLocation location, UUID playerUuid) {
+        String sql = "DELETE FROM " + TEMP_GRANT_TABLE
+                + " WHERE plugin = ? AND world = ? AND x = ? AND y = ? AND z = ? AND player = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, pluginType);
+            ps.setString(2, location.getWorld());
+            ps.setInt(3, location.getX());
+            ps.setInt(4, location.getY());
+            ps.setInt(5, location.getZ());
+            ps.setString(6, playerUuid.toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
+        }
     }
 
     @Override
