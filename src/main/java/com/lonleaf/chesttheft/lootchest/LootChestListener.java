@@ -43,7 +43,7 @@ public class LootChestListener implements Listener, PacketListener {
     private final LootChestConfigManager configManager;
     /** 撬锁小游戏（level >= 0 的战利品箱需先撬锁才能打开）。 */
     private final GameManager gameManager;
-    /** 按撬锁等级取对应的小游戏配置（locklevel/）。 */
+    /** 按撬锁等级取对应的小游戏配置（gamelevel/）。 */
     private final LockConfigManager lockConfigManager;
 
     public LootChestListener(ChestTheft plugin, PluginConfig config,

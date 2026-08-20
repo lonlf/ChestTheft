@@ -8,6 +8,7 @@ import com.lonleaf.chesttheft.service.ChestService;
 import com.lonleaf.chesttheft.trigger.TriggerContext;
 import com.lonleaf.chesttheft.trigger.TriggerManager;
 import com.lonleaf.chesttheft.trigger.TriggerType;
+import com.lonleaf.chesttheft.minigame.game.movingbar.MovingBarMiniGame;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -26,10 +27,12 @@ public class GameManager implements Listener {
     private final TriggerManager triggerManager;
     private final ChestService chestService;
     private final ItemManager itemManager;
+    /** 小游戏类型注册表：配置 game-type 指定玩法，可注册扩展玩法。 */
+    private final Map<String, MiniGame> miniGames = new HashMap<>();
     /** 默认小游戏配置（来自配置文件 game 小节）：未指定特定配置时使用。 */
     // volatile：reload 在主线程更新，事件监听器 / 定时任务线程读取
     private volatile GameConfig defaultGameConfig;
-    private final Map<UUID, GameSession> activeGames = new HashMap<>();
+    private final Map<UUID, MiniGameSession> activeGames = new HashMap<>();
     private final Map<UUID, Long> cooldowns = new HashMap<>();
     /** 撬锁成功后的开箱授权：玩家 → (箱子位置 → 授权记录)。 */
     private final Map<UUID, Map<BlockLocation, AccessGrant>> grantedAccess = new HashMap<>();
@@ -41,6 +44,23 @@ public class GameManager implements Listener {
         this.triggerManager = triggerManager;
         this.chestService = chestService;
         this.itemManager = itemManager;
+        // 内置小游戏：移动游标（moving-bar）；其他玩法通过 registerMiniGame 注册扩展
+        registerMiniGame(new MovingBarMiniGame());
+    }
+
+    /** 注册小游戏类型：已存在时以新定义覆盖。 */
+    public void registerMiniGame(MiniGame miniGame) {
+        miniGames.put(miniGame.getType(), miniGame);
+    }
+
+    /** 注销小游戏类型：注销后配置引用该类型将无法开局。 */
+    public void unregisterMiniGame(String type) {
+        miniGames.remove(type);
+    }
+
+    /** 按类型获取已注册的小游戏，未注册返回 null。 */
+    public MiniGame getMiniGame(String type) {
+        return miniGames.get(type);
     }
 
     /** reload 时更新默认配置（后续新会话使用新配置，进行中的会话保持旧配置）。 */
@@ -76,14 +96,21 @@ public class GameManager implements Listener {
             }
         }
 
-        GameSession session = new GameSession(player, this, config, target, onSuccess);
+        MiniGame miniGame = miniGames.get(config.getGameType());
+        if (miniGame == null) {
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_GAME_TYPE_UNKNOWN,
+                    config.getGameType(), miniGames.keySet()));
+            return false;
+        }
+        MiniGameSession session = miniGame.createSession(
+                new MiniGameContext(player, this, target, onSuccess, config));
         activeGames.put(uuid, session);
         session.start();
         return true;
     }
 
     public void endGame(Player player) {
-        GameSession session = activeGames.remove(player.getUniqueId());
+        MiniGameSession session = activeGames.remove(player.getUniqueId());
         if (session != null) {
             session.stop();
             cooldowns.put(player.getUniqueId(), System.currentTimeMillis());
@@ -152,7 +179,7 @@ public class GameManager implements Listener {
         }
     }
 
-    public GameSession getSession(Player player) {
+    public MiniGameSession getSession(Player player) {
         return activeGames.get(player.getUniqueId());
     }
 
@@ -162,7 +189,7 @@ public class GameManager implements Listener {
         if (event.isCancelled() || !(event.getEntity() instanceof Player player)) {
             return;
         }
-        GameSession session = activeGames.get(player.getUniqueId());
+        MiniGameSession session = activeGames.get(player.getUniqueId());
         if (session != null && session.getConfig().isInterruptDamage()) {
             interrupt(session, player);
         }
@@ -172,7 +199,7 @@ public class GameManager implements Listener {
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
-        GameSession session = activeGames.get(player.getUniqueId());
+        MiniGameSession session = activeGames.get(player.getUniqueId());
         if (session == null) {
             return;
         }
@@ -182,7 +209,7 @@ public class GameManager implements Listener {
         }
     }
 
-    private void interrupt(GameSession session, Player player) {
+    private void interrupt(MiniGameSession session, Player player) {
         Messages.send(player, Messages.PICK_INTERRUPTED, Messages.PICK_INTERRUPTED_FORMAT);
         BlockLocation location = BlockLocation.from(session.getTarget());
         triggerManager.fire(TriggerType.INTERRUPTED, new TriggerContext(player, location));
@@ -211,7 +238,7 @@ public class GameManager implements Listener {
     }
 
     public void cleanup() {
-        activeGames.values().forEach(GameSession::stop);
+        activeGames.values().forEach(MiniGameSession::stop);
         activeGames.clear();
         grantedAccess.clear();
     }

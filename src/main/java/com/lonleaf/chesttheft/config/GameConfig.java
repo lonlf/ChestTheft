@@ -2,49 +2,50 @@ package com.lonleaf.chesttheft.config;
 
 import org.bukkit.configuration.ConfigurationSection;
 
+/**
+ * 小游戏公共配置：会话级参数（超时/冷却/开箱授权/中断规则）与所选小游戏类型。
+ * 各玩法特有参数（如 moving-bar 的 bar-length）由玩法自己的配置类从原始配置段解析。
+ */
 public class GameConfig {
     private final String name;
-    private final int barLength;
-    private final int redLength;
-    private final int moveInterval;
+    /** 小游戏类型（配置 game-type），决定创建哪种玩法会话。 */
+    private final String gameType;
     private final int timeoutSeconds;
     private final int cooldownSeconds;
     private final int accessDurationSeconds;
     private final int accessOnceWindowSeconds;
     private final boolean interruptDamage;
     private final double interruptMoveRange;
+    /** 原始配置段：玩法特有参数由各玩法配置类解析；null 表示全部使用默认值。 */
+    private final ConfigurationSection section;
 
-    private GameConfig(String name, int barLength, int redLength, int moveInterval, int timeoutSeconds,
-                       int cooldownSeconds, int accessDurationSeconds, int accessOnceWindowSeconds,
-                       boolean interruptDamage, double interruptMoveRange) {
+    private GameConfig(String name, String gameType, int timeoutSeconds, int cooldownSeconds,
+                       int accessDurationSeconds, int accessOnceWindowSeconds,
+                       boolean interruptDamage, double interruptMoveRange, ConfigurationSection section) {
         this.name = name;
-        this.barLength = barLength;
-        this.redLength = redLength;
-        this.moveInterval = moveInterval;
+        this.gameType = gameType;
         this.timeoutSeconds = timeoutSeconds;
         this.cooldownSeconds = cooldownSeconds;
         this.accessDurationSeconds = accessDurationSeconds;
         this.accessOnceWindowSeconds = accessOnceWindowSeconds;
         this.interruptDamage = interruptDamage;
         this.interruptMoveRange = interruptMoveRange;
+        this.section = section;
     }
 
-    /** 从配置段解析小游戏配置，缺失键使用默认值并做范围约束（null 表示全用默认值）。 */
+    /** 从配置段解析小游戏公共配置，缺失键使用默认值并做范围约束（null 表示全用默认值）。
+     *  等级配置通常已由 LockConfigManager 与默认配置合并，缺失键即继承默认配置的值。 */
     public static GameConfig from(ConfigurationSection section) {
-        int barLength = Math.max(5, section == null ? 15 : section.getInt("bar-length", 15));
-        int redLength = Math.max(1, Math.min(barLength - 2,
-                section == null ? 3 : section.getInt("red-length", 3)));
         return new GameConfig(
                 section == null ? null : section.getString("name"),
-                barLength,
-                redLength,
-                Math.max(1, section == null ? 10 : section.getInt("move-interval", 10)),
+                section == null ? "moving-bar" : section.getString("game-type", "moving-bar"),
                 Math.max(1, section == null ? 15 : section.getInt("timeout", 15)),
                 Math.max(0, section == null ? 3 : section.getInt("cooldown", 3)),
                 Math.max(0, section == null ? 60 : section.getInt("access-duration", 60)),
                 Math.max(1, section == null ? 60 : section.getInt("access-once-window", 60)),
                 section == null || section.getBoolean("interrupt-damage", true),
-                section == null ? 3.0 : section.getDouble("interrupt-move-range", 3.0)
+                section == null ? 3.0 : section.getDouble("interrupt-move-range", 3.0),
+                section
         );
     }
 
@@ -53,24 +54,13 @@ public class GameConfig {
         return name;
     }
 
-    public int getBarLength() {
-        return barLength;
-    }
-
-    public int getRedLength() {
-        return redLength;
-    }
-
-    public int getMoveInterval() {
-        return moveInterval;
+    /** 小游戏类型（配置 game-type），决定创建哪种玩法会话。 */
+    public String getGameType() {
+        return gameType;
     }
 
     public int getTimeoutSeconds() {
         return timeoutSeconds;
-    }
-
-    public int getTimeoutTicks() {
-        return Math.max(1, timeoutSeconds * 20 / moveInterval);
     }
 
     public int getCooldownSeconds() {
@@ -95,5 +85,10 @@ public class GameConfig {
     /** 撬锁中移动超过该范围（方块）中断撬锁；0 或负值表示不限制移动。 */
     public double getInterruptMoveRange() {
         return interruptMoveRange;
+    }
+
+    /** 原始配置段：玩法特有参数由各玩法配置类解析；null 表示全部使用默认值。 */
+    public ConfigurationSection getSection() {
+        return section;
     }
 }

@@ -1,6 +1,7 @@
 package com.lonleaf.chesttheft.config;
 
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.MemoryConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -11,20 +12,34 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 不同等级锁的小游戏配置（locklevel 文件夹下全部 yml）：数字等级 → GameConfig；等级 0 定义时覆盖默认配置。 */
+/** 不同等级锁的小游戏配置（gamelevel 文件夹下全部 yml）：数字等级 → GameConfig；等级 0 定义时覆盖默认配置。 */
 public class LockConfigManager {
     private final JavaPlugin plugin;
-    private final File lockDir;
+    private final File gameLevelDir;
     private final Map<Integer, GameConfig> configs = new HashMap<>();
     /** 默认配置（config.yml 的 game 小节），配置文件未定义 0 级时的兜底。 */
     private volatile GameConfig defaultConfig;
 
     public LockConfigManager(JavaPlugin plugin, GameConfig defaultConfig) {
         this.plugin = plugin;
-        this.lockDir = new File(plugin.getDataFolder(), "locklevel");
+        this.gameLevelDir = new File(plugin.getDataFolder(), "gamelevel");
         this.defaultConfig = defaultConfig;
+        migrateOldFolder();
         saveDefault();
         load();
+    }
+
+    /** 旧版本配置目录为 locklevel：已存在旧目录且新目录不存在时整体迁移，保留玩家自建等级配置。 */
+    private void migrateOldFolder() {
+        File oldDir = new File(plugin.getDataFolder(), "locklevel");
+        if (oldDir.isDirectory() && !gameLevelDir.exists()) {
+            if (oldDir.renameTo(gameLevelDir)) {
+                plugin.getLogger().info("[LockConfig] Migrated config folder locklevel/ to gamelevel/");
+            } else {
+                plugin.getLogger().warning("[LockConfig] Failed to migrate locklevel/ to gamelevel/, "
+                        + "locklevel/ configs will be ignored");
+            }
+        }
     }
 
     /** reload 时更新默认配置（等级 0 未在配置文件中定义时的兜底）。 */
@@ -32,17 +47,17 @@ public class LockConfigManager {
         this.defaultConfig = defaultConfig;
     }
 
-    /** 保存默认模板 lock.yml（仅当 locklevel 目录下没有任何 yml 时创建）。 */
+    /** 保存默认模板 lock.yml（仅当 gamelevel 目录下没有任何 yml 时创建）。 */
     private void saveDefault() {
-        File[] files = lockDir.listFiles((dir, name) -> name.endsWith(".yml"));
+        File[] files = gameLevelDir.listFiles((dir, name) -> name.endsWith(".yml"));
         if (files == null || files.length == 0) {
-            plugin.saveResource("locklevel/lock.yml", false);
+            plugin.saveResource("gamelevel/lock.yml", false);
         }
     }
 
     public void load() {
         configs.clear();
-        File[] files = lockDir.listFiles((dir, name) -> name.endsWith(".yml"));
+        File[] files = gameLevelDir.listFiles((dir, name) -> name.endsWith(".yml"));
         if (files == null) {
             return;
         }
@@ -65,10 +80,30 @@ public class LockConfigManager {
                 plugin.getLogger().warning(Messages.getLog(Messages.LOG_LOCK_LEVEL_INVALID, level, file.getName()));
                 continue;
             }
-            if (configs.put(key, GameConfig.from(section)) != null) {
+            if (configs.put(key, GameConfig.from(mergeWithDefault(section))) != null) {
                 plugin.getLogger().warning(Messages.getLog(Messages.LOG_LOCK_LEVEL_DUPLICATE, level, file.getName()));
             }
         }
+    }
+
+    /**
+     * 等级配置是默认配置（config.yml game 小节）的覆写：先用默认配置填充全部键，
+     * 再用等级配置覆写已定义的键，未定义的键自然继承默认值（含玩法特有参数）。
+     */
+    private ConfigurationSection mergeWithDefault(ConfigurationSection override) {
+        MemoryConfiguration merged = new MemoryConfiguration();
+        ConfigurationSection base = defaultConfig != null ? defaultConfig.getSection() : null;
+        if (base != null) {
+            for (String key : base.getKeys(false)) {
+                merged.set(key, base.get(key));
+            }
+        }
+        if (override != null) {
+            for (String key : override.getKeys(false)) {
+                merged.set(key, override.get(key));
+            }
+        }
+        return merged;
     }
 
     /** 获取指定等级的小游戏配置：0 级取配置文件定义的 0 级（未定义用默认）；未配置的正等级就近回退，无可用时用默认。 */

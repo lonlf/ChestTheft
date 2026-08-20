@@ -120,6 +120,8 @@ public class PluginConfig {
     private volatile List<String> lootChestExcludedWorlds;
     /** 受 LWC / Bolt 保护的箱子是否启用本插件撬锁功能；false 时不可上锁，已上锁则保护所有者交互时自动卸锁。 */
     private volatile boolean protectionPickingEnabled;
+    /** 位图渲染字体配置（font 小节）：偏移字体/位图字体与码位。 */
+    private volatile FontConfig fontConfig;
     /** 各消息显示方式配置（message-format 小节）：消息键 → message/actionbar/title/subtitle。 */
     private final Map<String, String> messageFormats = new HashMap<>();
 
@@ -300,6 +302,7 @@ public class PluginConfig {
         lootChestInteractionRange = Math.max(1.0, config.getDouble("lootchest.interaction-range", 4.0));
         lootChestExcludedWorlds = config.getStringList("lootchest.worlds.exclude");
         protectionPickingEnabled = config.getBoolean("protection.picking-enabled", false);
+        fontConfig = FontConfig.from(config.getConfigurationSection("font"));
         debug = config.getBoolean("debug", false);
 
         // 语言：未设置时用系统检测值兜底（首启时由 applySystemLanguage 写回文件）
@@ -440,6 +443,11 @@ public class PluginConfig {
     /** 受 LWC / Bolt 保护的箱子是否启用本插件撬锁功能。 */
     public boolean isProtectionPickingEnabled() {
         return protectionPickingEnabled;
+    }
+
+    /** 位图渲染字体配置（font 小节）：偏移字体/位图字体与码位。 */
+    public FontConfig getFontConfig() {
+        return fontConfig;
     }
 
     /** 解析战利品箱展示方式：display / block，非法值回退为 display。 */

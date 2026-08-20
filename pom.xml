@@ -45,10 +45,6 @@
                                     <pattern>me.tofaa.entitylib</pattern>
                                     <shadedPattern>com.lonleaf.entitylib</shadedPattern>
                                 </relocation>
-                                <relocation>
-                                    <pattern>net.momirealms.sparrow</pattern>
-                                    <shadedPattern>com.lonleaf.sparrow</shadedPattern>
-                                </relocation>
                             </relocations>
                         </configuration>
                     </execution>
@@ -93,12 +89,9 @@
             <version>26.7.4</version> <!-- 例如 0.0.60 -->
             <scope>provided</scope>
         </dependency>
-        <dependency>
-            <groupId>net.momirealms</groupId>
-            <artifactId>sparrow-minimessage</artifactId>
-            <version>0.5</version>
-            <scope>compile</scope>
-        </dependency>
+        <!-- 注：sparrow-minimessage 0.5 按 adventure 5.x 编译（依赖 ClickEvent$Action$TextCarrier），
+             与服务器/PacketEvents 使用的 adventure 4.x 不兼容，运行时不可用，故未接入；
+             位图渲染通过 ChatJson 直接构造 ChatComponent JSON，无需 MiniMessage -->
         <dependency>
             <groupId>com.github.retrooper</groupId>
             <artifactId>packetevents-api</artifactId>

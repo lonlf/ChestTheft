@@ -158,7 +158,7 @@ public class LootChestProfile {
         return chance;
     }
 
-    /** 撬锁等级：-1 无需撬锁直接打开；>= 0 需撬锁（对应 locklevel/ 中的等级配置）。 */
+    /** 撬锁等级：-1 无需撬锁直接打开；>= 0 需撬锁（对应 gamelevel/ 中的等级配置）。 */
     public int getLevel() {
         return level;
     }

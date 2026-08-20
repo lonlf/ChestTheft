@@ -1,14 +1,14 @@
 # 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
-config-version: 6
+config-version: 7
+# 是否输出调试日志
+debug: false
 # 保护插件集成设置（与各类保护插件交互）
 protection:
   # 受保护插件保护的箱子是否启用本插件撬锁功能
   # false（默认）：不可对受保护箱子上锁，若箱子已有锁则在保护所有者交互时自动卸锁并返还锁物品
   # true：其他玩家可以通过撬锁打开受保护的箱子
   picking-enabled: false
-# 是否输出调试日志
-debug: false
-# 语言设置: zh_cn / en_gb（首次启动时按服务器地区自动检测填充，可手动修改）
+# 语言设置: zh_cn / en_gb
 language: "en_gb"
 # 数据库设置
 database:
@@ -24,15 +24,53 @@ database:
 
 # 撬锁小游戏参数
 game:
-  bar-length: 15     # 进度条总格数
-  red-length: 3      # 红色区域长度
-  move-interval: 10  # 光标移动间隔（tick，20 tick = 1 秒）
+  # 小游戏类型（决定玩法）：moving-bar = 移动游标停在红区；扩展玩法由插件注册后在 game-type 指定
+  game-type: moving-bar
+  # --- 以下为公共参数（所有玩法通用） ---
   timeout: 15        # 超时时间（秒）
   cooldown: 3        # 撬锁结束后的冷却时间（秒）
   access-duration: 60  # 撬锁成功后玩家可自由打开该箱子的时长（秒）；0 表示不启用限时授权，改为仅一次打开机会
   access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时，撬锁成功后需在此窗口内使用这一次打开机会
   interrupt-damage: true    # 撬锁过程中受到伤害时是否中断撬锁
   interrupt-move-range: 3.0  # 撬锁过程中移动超过该范围（方块）时中断撬锁；0 或负值表示不限制移动
+  # --- moving-bar 玩法特有参数（其他玩法不使用） ---
+  oscillate: true   # 游标是否自动往复移动；false 时改为骑乘模式（玩家进入骑乘状态），按 A/D 键控制游标左右移动
+  render-mode: ascii  # 渲染方式: ascii = 字符条（默认，无需材质包）; bitmap = 位图（需玩家安装材质包，见 font 小节）
+  bar-length: 15     # 进度条总格数
+  red-length: 3      # 红色区域长度
+  move-interval: 10  # 光标移动间隔（tick，20 tick = 1 秒）
+
+# 位图渲染（资源包字体）设置：字体名与码位须与生成的资源包一致，非特殊需求勿修改
+font:
+  # 偏移定位字体（space 类型）：把游标/判定区推进到指定像素位置
+  offset: "chesttheft:offset_chars"
+  # 游标位图字体（bitmap 类型）：包含底格/红格/指针格/空白格四个字形
+  bar: "chesttheft:bar"
+  # 偏移字符码位（十六进制，不带 \u 前缀）：键为像素偏移，值为该偏移对应的码位
+  # 与资源包 assets/chesttheft/font/offset_chars.json 中的 advance 定义一一对应
+  offset-chars:
+    '1': e00a
+    '2': e00b
+    '4': e00c
+    '8': e00d
+    '16': e00e
+    '32': e00f
+    '64': e010
+    '128': e011
+    '-1': e001
+    '-2': e002
+    '-4': e003
+    '-8': e004
+    '-16': e005
+    '-32': e006
+    '-64': e007
+    '-128': e008
+  # 位图字符码位（十六进制，对应 bar.png 从左到右的 4 个字形切片）
+  bar-chars:
+    base: e100      # 底格（进度条背景）
+    red: e101       # 红格（成功判定区）
+    pointer: e102   # 指针格（当前游标）
+    blank: e103     # 空白格（全透明占位）
 
 # 钥匙功能
 key:
@@ -87,13 +125,13 @@ message-format:
   pickingTimeout: title   # 撬锁超时
   pickingCooldown: title  # 撬锁冷却
   lockSuccess: title        # 上锁成功
-  chestLocked: message      # 箱子已上锁
+  chestLocked: actionbar      # 箱子已上锁
   unlockSuccess: message    # 卸锁成功
-  unlockConfirm: message    # 卸锁确认
+  unlockConfirm: actionbar    # 卸锁确认
   pairSuccess: message      # 配对成功
   pairNotLocker: message    # 无法配对
-  keyNotMatched: message    # 钥匙不匹配
-  keyChanged: message       # 钥匙已更换
+  keyNotMatched: actionbar    # 钥匙不匹配
+  keyChanged: actionbar       # 钥匙已更换
   chestProtected: message    # 受保护箱子已卸锁
   chestProtectedLockDenied: message    # 受保护箱子无法上锁
   chestProtectedAccessDenied: message  # 受保护箱子无法操作

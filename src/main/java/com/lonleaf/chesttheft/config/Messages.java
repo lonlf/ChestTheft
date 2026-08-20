@@ -156,6 +156,7 @@ public class Messages {
     public static volatile String LOG_CONFIG_KEEP_PREVIOUS;
     public static volatile String LOG_LOCK_LEVEL_INVALID;
     public static volatile String LOG_LOCK_LEVEL_DUPLICATE;
+    public static volatile String LOG_GAME_TYPE_UNKNOWN;
     public static volatile String LOG_LOCK_LEVEL_FALLBACK;
     public static volatile String LOG_LOCK_LEVEL_FALLBACK_DEFAULT;
     public static volatile String LOG_LOCK_APPLIED;

@@ -14,6 +14,7 @@ import com.lonleaf.chesttheft.listener.KeyGlowListener;
 import com.lonleaf.chesttheft.lootchest.LootChestConfigManager;
 import com.lonleaf.chesttheft.lootchest.LootChestListener;
 import com.lonleaf.chesttheft.lootchest.LootChestManager;
+import com.lonleaf.chesttheft.message.OffsetChars;
 import com.lonleaf.chesttheft.packet.PacketManager;
 import com.lonleaf.chesttheft.protection.ProtectionListener;
 import com.lonleaf.chesttheft.service.ChestService;
@@ -78,6 +79,8 @@ public final class ChestTheft extends JavaPlugin {
         if (config.isLanguageDetected()) {
             getLogger().info(Messages.getLog(Messages.LOG_LANG_DETECTED, config.getDetectedLocale(), config.getLanguage()));
         }
+        // 位图渲染：初始化偏移字符工具（字体/码位配置，材质包由服主自行准备与分发）
+        OffsetChars.init(config.getFontConfig());
 
         databaseManager = new DatabaseManager(this, config);
         ChestService chestService = new ChestService(databaseManager.getDatabase());
@@ -88,7 +91,7 @@ public final class ChestTheft extends JavaPlugin {
         ItemManager itemManager = new ItemManager(itemTagger, itemConfigManager);
         // 协议包模块：为特殊物品动态注入 Lore 展示信息（类型、配对状态等）
         new PacketManager(this, config, itemConfigManager);
-        // 不同等级锁的小游戏配置（locklevel/lock.yml）；等级 0 固定为 config.yml 的 game 小节默认配置
+        // 不同等级锁的小游戏配置（gamelevel/lock.yml）；等级 0 固定为 config.yml 的 game 小节默认配置
         lockConfigManager = new LockConfigManager(this, config.getGameConfig());
         // 触发器系统：加载 trigger 文件夹配置，在撬锁成功/失败/取消/打断、上锁、钥匙开锁/配对时执行配置动作
         TriggerManager triggerManager = new TriggerManager(this);

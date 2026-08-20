@@ -2,8 +2,12 @@
 # 等级 0：定义时覆盖默认配置（config.yml 的 game 小节）；未定义时等级 0 使用默认配置
 # 未在此处配置的正等级将按就近原则回退：更低可用等级 → 更高可用等级 → 默认配置
 # 新增等级：复制一份配置并将键改为更大的数字即可
+# game-type：该等级使用的小游戏类型（默认 moving-bar），公共参数与 moving-bar 特有参数见 config.yml 的 game 小节
 1:
   name: normal     # 等级名称
+  game-type: moving-bar  # 小游戏类型（可扩展玩法）
+  oscillate: true  # 游标是否自动往复移动；false 时改为骑乘模式，按 A/D 键控制游标左右移动
+  render-mode: ascii  # 渲染方式: ascii = 字符条（默认，无需材质包）; bitmap = 位图（需玩家安装材质包）
   bar-length: 15   # 进度条总格数
   red-length: 3    # 红色区域长度
   move-interval: 10 # 光标移动间隔（tick，20 tick = 1 秒）
@@ -15,6 +19,9 @@
   interrupt-move-range: 3.0  # 撬锁中移动超过该范围（方块）是否中断；0 或负值关闭
 2:
   name: advanced
+  game-type: moving-bar
+  oscillate: true
+  render-mode: ascii
   bar-length: 20
   red-length: 2
   move-interval: 8
@@ -26,6 +33,9 @@
   interrupt-move-range: 3.0
 3:
   name: master
+  game-type: moving-bar
+  oscillate: true
+  render-mode: ascii
   bar-length: 25
   red-length: 2
   move-interval: 5

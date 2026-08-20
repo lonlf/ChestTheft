@@ -5,7 +5,7 @@ import com.lonleaf.chesttheft.config.LockConfigManager;
 import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.minigame.GameManager;
-import com.lonleaf.chesttheft.minigame.GameSession;
+import com.lonleaf.chesttheft.minigame.MiniGameSession;
 import com.lonleaf.chesttheft.event.ChestInteractEvent;
 import com.lonleaf.chesttheft.event.ChestKeyOpenEvent;
 import com.lonleaf.chesttheft.event.ChestLockEvent;
@@ -22,6 +22,9 @@ import com.lonleaf.chesttheft.trigger.TriggerType;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+
+
+
 import org.bukkit.block.Chest;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.entity.Player;
@@ -48,7 +51,7 @@ public class ChestListener implements Listener {
     private final GameManager gameManager;
     private final ItemManager itemManager;
     private final PluginConfig config;
-    /** 不同等级锁的小游戏配置（locklevel/lock.yml），撬锁时按锁等级取对应配置。 */
+    /** 不同等级锁的小游戏配置（gamelevel/lock.yml），撬锁时按锁等级取对应配置。 */
     private final LockConfigManager lockConfigManager;
     /** 触发器系统：在撬锁成功/失败/取消、上锁、钥匙开锁/配对时执行配置动作。 */
     private final TriggerManager triggerManager;
@@ -113,6 +116,11 @@ public class ChestListener implements Listener {
                     event.setCancelled(false);
                     // 一次性授权在打开后消耗；限时授权不受影响
                     gameManager.consumeOnceAccess(player, location);
+                    // 仅"使用钥匙操作"打开后才撤销（含本人撬锁获得的）授权，实现重新上锁；
+                    // 空手/其他方式打开保留授权窗口
+                    if (isKeyOperation(item, player, block, location)) {
+                        revokeAccessIfLocker(player, block, location);
+                    }
                 } else {
                     event.setCancelled(true);
                 }
@@ -390,9 +398,17 @@ public class ChestListener implements Listener {
         return false;
     }
 
+    /** 本次打开是否为"钥匙操作"：手持配对钥匙，或未要求手持时背包中存在配对钥匙。 */
+    private boolean isKeyOperation(ItemStack item, Player player, Block block, BlockLocation location) {
+        if (item != null && itemManager.isType(item, ItemType.KEY)) {
+            return isKeyMatched(item, location, block);
+        }
+        return hasMatchedBagKey(player, block, location);
+    }
+
     private void handleGameClick(PlayerInteractEvent event, Player player) {
         event.setCancelled(true);
-        GameSession session = gameManager.getSession(player);
+        MiniGameSession session = gameManager.getSession(player);
         if (session == null) {
             return;
         }
@@ -444,7 +460,7 @@ public class ChestListener implements Listener {
         int pickerLevel = itemManager.getLevel(event.getItem());
         int effectiveLevel = lockLevel - pickerLevel;
         GameConfig levelConfig = lockConfigManager.getGameConfig(effectiveLevel);
-        // 开始提示与规则由 GameSession.start() 统一以标题显示（先规则后进度条），
+        // 开始提示与规则由小游戏会话 start() 统一显示（先规则后进度条），
         // 此处不再发 START_PICKING，避免同通道标题后发覆盖规则消息。
         if (gameManager.startGame(player, target, levelConfig) && config.isDebug()) {
             gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_PICKLOCK_START_DEBUG,
@@ -540,7 +556,7 @@ public class ChestListener implements Listener {
     @EventHandler
     public void onSneak(PlayerToggleSneakEvent event) {
         if (event.isSneaking() && gameManager.isPlaying(event.getPlayer())) {
-            GameSession session = gameManager.getSession(event.getPlayer());
+            MiniGameSession session = gameManager.getSession(event.getPlayer());
             if (session != null) {
                 triggerManager.fire(TriggerType.CANCEL,
                         new TriggerContext(event.getPlayer(), BlockLocation.from(session.getTarget())));

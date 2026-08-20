@@ -1,6 +1,6 @@
 # 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
 # 添加自定义物品：复制一份定义并修改 ID（如 lock002）与 name/material 等即可
-# level: 锁等级（数字，对应 locklevel/lock.yml 中的等级键），未配置时撬锁使用默认难度
+# level: 锁等级（数字，对应 gamelevel/lock.yml 中的等级键），未配置时撬锁使用默认难度
 # triggers: 锁物品自带的多个触发器（可选）。每个触发器以 id 为主键，支持两种形式：
 #   1. 引用形式：值为 trigger 文件夹中已配置的全局触发器 id 列表，按被引用触发器自身的 type 触发
 #   2. 内嵌定义形式：含 type（success/fail/cancel/interrupted/lock/key-open/key-pair）与 actions
