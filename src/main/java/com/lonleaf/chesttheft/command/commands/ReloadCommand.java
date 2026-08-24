@@ -5,6 +5,8 @@ import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.item.ItemConfigManager;
 import com.lonleaf.chesttheft.lootchest.LootChestManager;
+import com.lonleaf.chesttheft.message.BitmapCalculator;
+import com.lonleaf.chesttheft.message.OffsetChars;
 import com.lonleaf.chesttheft.minigame.GameManager;
 import com.lonleaf.chesttheft.trigger.TriggerManager;
 import org.bukkit.command.CommandSender;
@@ -41,6 +43,10 @@ public class ReloadCommand implements Command {
         }
 
         config.reload();
+        // 位图渲染工具持有 FontConfig 静态引用，仅在启动时注入；reload 后必须重新注入新配置，
+        // 否则 font.bitmap（tumbler-ascent 等）与 tumbler-chars 的修改不生效
+        OffsetChars.init(config.getFontConfig());
+        BitmapCalculator.init(config.getFontConfig());
         itemConfigManager.reload();
         gameManager.updateConfig(config.getGameConfig());
         lockConfigManager.load();

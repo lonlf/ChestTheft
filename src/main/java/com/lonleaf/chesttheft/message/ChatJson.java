@@ -4,9 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ChatComponent JSON 构建器：把多个文本段（可选字体）合并为 Minecraft ChatComponent JSON。
- * 用于位图渲染——不同段可指定不同字体（如 chesttheft:bar 位图 / chesttheft:offset_chars 偏移），
- * 从而在同一 title 中混合位图字符与偏移定位字符。
+ * ChatComponent JSON 构建器：合并多个文本段（可分别指定字体），用于位图渲染。
  */
 public final class ChatJson {
 

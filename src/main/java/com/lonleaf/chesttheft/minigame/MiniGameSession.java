@@ -12,6 +12,16 @@ import org.bukkit.scheduler.BukkitTask;
  */
 public abstract class MiniGameSession {
 
+    /** 点击结果：单次点击对游戏进程的影响。 */
+    public enum ClickResult {
+        /** 点击成功：游戏成功结束（如移动游标命中判定区、节奏条全部判定点命中）。 */
+        SUCCESS,
+        /** 点击失败：游戏失败结束（如未命中判定区、误点）。 */
+        FAIL,
+        /** 命中但游戏继续（仅多阶段玩法使用，如节奏条命中一个判定点后需继续命中其余判定点）。 */
+        CONTINUE
+    }
+
     protected final Player player;
     protected final GameManager gameManager;
     protected final GameConfig config;
@@ -25,6 +35,8 @@ public abstract class MiniGameSession {
     private final long deadline;
 
     private BukkitTask task;
+    /** 动作栏规则提示的周期重发任务：客户端动作栏约 3 秒后自动消失，重发使其持续显示。 */
+    private BukkitTask ruleTask;
 
     protected MiniGameSession(MiniGameContext context) {
         this.player = context.getPlayer();
@@ -52,6 +64,16 @@ public abstract class MiniGameSession {
     /** 成功判定：由外部交互（点击/动作）在恰当时机调用。 */
     public abstract boolean checkSuccess();
 
+    /** 点击判定：默认按 checkSuccess 单次判定；多阶段玩法可覆写返回 CONTINUE 继续。 */
+    public ClickResult onClick() {
+        return checkSuccess() ? ClickResult.SUCCESS : ClickResult.FAIL;
+    }
+
+    /** 玩法主动失败结束（非点击触发，如节奏条光标越过判定点未命中）：发送失败消息并触发失败触发器后结束会话。 */
+    public final void failGame() {
+        gameManager.failGame(this);
+    }
+
     /** 启动会话：注册定时任务并进入玩法循环。 */
     public final void start() {
         onStart();
@@ -68,13 +90,30 @@ public abstract class MiniGameSession {
         onTick();
     }
 
-    /** 结束会话：取消定时任务并调用清理钩子（结束提示由调用方以标题覆盖，此处不清空标题）。 */
+    /** 结束会话：取消定时任务与规则提示重发任务，并调用清理钩子（结束提示由调用方以标题覆盖，此处不清空标题）。 */
     public final void stop() {
         if (task != null) {
             task.cancel();
             task = null;
         }
+        if (ruleTask != null) {
+            ruleTask.cancel();
+            ruleTask = null;
+        }
         onStop();
+    }
+
+    /**
+     * 周期重发动作栏消息：客户端动作栏约 3 秒后自动消失，按 intervalTicks 周期重发使其持续显示到会话结束。
+     * 立即发送一次，随后按间隔重复调用 sender。
+     */
+    protected final void repeatActionBar(Runnable sender, long intervalTicks) {
+        sender.run();
+        if (ruleTask != null) {
+            ruleTask.cancel();
+        }
+        ruleTask = gameManager.getPlugin().getServer().getScheduler().runTaskTimer(
+                gameManager.getPlugin(), sender, intervalTicks, intervalTicks);
     }
 
     public Player getPlayer() {

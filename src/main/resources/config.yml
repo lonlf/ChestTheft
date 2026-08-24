@@ -1,5 +1,5 @@
-# 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
-config-version: 7
+﻿# 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
+config-version: 12
 # 是否输出调试日志
 debug: false
 # 保护插件集成设置（与各类保护插件交互）
@@ -24,27 +24,30 @@ database:
 
 # 撬锁小游戏参数
 game:
-  # 小游戏类型（决定玩法）：moving-bar = 移动游标停在红区；扩展玩法由插件注册后在 game-type 指定
+  # 小游戏类型（决定玩法）：moving-bar = 移动游标停在未完成判定区；扩展玩法由插件注册后在 game-type 指定
   game-type: moving-bar
-  # --- 以下为公共参数（所有玩法通用） ---
+  # --- 公共参数（所有玩法通用，moving-bar 与 rhythm-bar 共用） ---
   timeout: 15        # 超时时间（秒）
   cooldown: 3        # 撬锁结束后的冷却时间（秒）
   access-duration: 60  # 撬锁成功后玩家可自由打开该箱子的时长（秒）；0 表示不启用限时授权，改为仅一次打开机会
   access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时，撬锁成功后需在此窗口内使用这一次打开机会
   interrupt-damage: true    # 撬锁过程中受到伤害时是否中断撬锁
   interrupt-move-range: 3.0  # 撬锁过程中移动超过该范围（方块）时中断撬锁；0 或负值表示不限制移动
-  # --- moving-bar 玩法特有参数（其他玩法不使用） ---
   oscillate: true   # 游标是否自动往复移动；false 时改为骑乘模式（玩家进入骑乘状态），按 A/D 键控制游标左右移动
   render-mode: ascii  # 渲染方式: ascii = 字符条（默认，无需材质包）; bitmap = 位图（需玩家安装材质包，见 font 小节）
   bar-length: 15     # 进度条总格数
-  red-length: 3      # 红色区域长度
+  unhit-length: 3    # 未完成判定区长度（移动游标玩法：游标进入后点击判定；节奏条玩法：单个判定点长度）
   move-interval: 10  # 光标移动间隔（tick，20 tick = 1 秒）
+  # --- rhythm-bar 玩法特有参数（其他玩法不使用）：多个未完成判定点依次命中，全部命中即成功，错过或误点即失败 ---
+  hit-count: 3       # 判定点数量
+  hit-length: 2      # 每个判定点长度（格数）
+  hit-min-gap: 3     # 判定点之间的最小间隔（格数）
 
 # 位图渲染（资源包字体）设置：字体名与码位须与生成的资源包一致，非特殊需求勿修改
 font:
   # 偏移定位字体（space 类型）：把游标/判定区推进到指定像素位置
   offset: "chesttheft:offset_chars"
-  # 游标位图字体（bitmap 类型）：包含底格/红格/指针格/空白格四个字形
+  # 游标位图字体（bitmap 类型）：包含底格/未完成格/游标格/空白格/完成格字形
   bar: "chesttheft:bar"
   # 偏移字符码位（十六进制，不带 \u 前缀）：键为像素偏移，值为该偏移对应的码位
   # 与资源包 assets/chesttheft/font/offset_chars.json 中的 advance 定义一一对应
@@ -65,12 +68,59 @@ font:
     '-32': e006
     '-64': e007
     '-128': e008
-  # 位图字符码位（十六进制，对应 bar.png 从左到右的 4 个字形切片）
+  # 位图字符码位（十六进制）：普通格 bar_cell.png（8px/切片）+ 边框格 bar_edge.png（10px/切片，多 1px 边框像素）
   bar-chars:
-    base: e100      # 底格（进度条背景）
-    red: e101       # 红格（成功判定区）
-    pointer: e102   # 指针格（当前游标）
-    blank: e103     # 空白格（全透明占位）
+    base: e100      # 底格（进度条背景，8px）
+    unhit: e101     # 未完成格（红色，判定点未命中，8px）
+    cursor: e102    # 游标格（黄色，当前游标，8px）
+    blank: e103     # 空白格（全透明占位，8px）
+    done: e106      # 完成格（绿色，判定点已命中，8px）
+    left: e104      # 左端边框格（9px，条最左色块）
+    right: e105     # 右端边框格（9px，条最右色块）
+  # 机关转轮玩法（tumbler-bar）状态码位：背景块 / A 普通态 / A 特殊态（尝试失败时显示）/ B 状态
+  # 新增状态：在下方对应小节追加数字键即可（如 a 加 4: e128），同时修改 lock.yml 对应等级的状态数，无需改代码
+  tumbler-chars:
+    background: e140  # 背景整图（96x96，单字符，无拼接缝隙；A/B 图标在其上定位；多块用逗号分隔）
+    a:
+      0: e120       # 机关 A 状态 0
+      1: e121       # 机关 A 状态 1
+      2: e122       # 机关 A 状态 2
+      3: e123       # 机关 A 状态 3
+      4: e124       # 机关 A 状态 4
+    a-special:
+      0: e125       # 机关 A 状态 0 特殊态（tumbler_a_special.png，与普通态分属不同字形）
+      1: e126       # 机关 A 状态 1 特殊态
+      2: e127       # 机关 A 状态 2 特殊态
+      3: e128       # 机关 A 状态 3 特殊态
+      4: e129       # 机关 A 状态 4 特殊态
+    b:
+      0: e130       # 机关 B 状态 0
+      1: e131       # 机关 B 状态 1
+      2: e132       # 机关 B 状态 2
+      3: e133       # 机关 B 状态 3
+      4: e134       # 机关 B 状态 4
+  # 位图计算参数（须与资源包一致，用于计算渲染间隙补偿偏移）
+  # 缩放比例 = height / png 高度；补偿量 = advance(上取整) + glyph-gap - 渲染宽(下取整)
+  # 建议 height 与 PNG 高度一致（1:1 不缩放），避免缩放取整导致端点重叠闪动
+  bitmap:
+    cell-png-height: 8     # bar_cell.png 高度（像素）
+    cell-slice-width: 8    # bar_cell 每字符切片宽度（像素）
+    cell-height: 8         # bar.json 中 bar_cell provider 的 height（渲染高度，像素）
+    edge-png-height: 8     # bar_edge.png 高度（像素）
+    edge-slice-width: 9    # bar_edge 每字符切片宽度（像素，比普通格宽 1px 形成边框）
+    edge-height: 8         # bar.json 中 bar_edge provider 的 height（渲染高度，像素）
+    glyph-gap: 1           # 客户端每字形后固定间隙（像素）
+    edge-overlay-outset: 1 # 游标到达端点时，边框格外侧露出的边框像素（边框切片比游标宽时，如边框 15px/游标 8px 设 3）
+    tumbler-tile: 48       # 机关转轮（tumbler-bar）背景格/A/B 图标尺寸（像素，48x48 方块；须与资源包 tumbler_bg/tumbler_a/tumbler_a_special/tumbler_b 一致）
+    tumbler-png-height: 96 # tumbler 相关 PNG 高度（像素，须与资源包 PNG 高度一致）
+    tumbler-height: 96     # bar.json 中 tumbler provider 的 height（渲染高度，像素）
+    # tumbler 条整体上下位置：以材质包 bar.json 为准，运行 build_resourcepack.ps1 时自动从 bar.json 同步到此处
+    # 服务端仅读取该值用于计算/诊断；调整高度请直接改 bar.json 的 tumbler provider ascent（调大条下移、调小条上移，须 <= height）
+    # 改完运行 build_resourcepack.ps1 重建 zip，客户端完全重启游戏生效
+    tumbler-ascent: 48
+    # 位图条整体水平平移（像素，正=右移、负=左移）：纯服务端渲染偏移，/reload 即生效，无需材质包
+    # 垂直方向无法用配置调整：字幕渲染基线由客户端引擎硬编码，像素级垂直偏移只能改材质包 bar.json 的 ascent（见上）
+    horizontal-offset: 0
 
 # 钥匙功能
 key:

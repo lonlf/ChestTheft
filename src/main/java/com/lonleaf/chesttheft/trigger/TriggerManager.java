@@ -126,7 +126,7 @@ public class TriggerManager {
                         plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_REF_MISSING, String.valueOf(o), id));
                         continue;
                     }
-                    result.computeIfAbsent(ref.getType(), k -> new ArrayList<>()).addAll(ref.getActions());
+                    result.computeIfAbsent(ref.type(), k -> new ArrayList<>()).addAll(ref.actions());
                 }
                 continue;
             }

@@ -2,11 +2,10 @@ package com.lonleaf.chesttheft.message;
 
 import com.lonleaf.chesttheft.config.FontConfig;
 
+import java.util.List;
+
 /**
- * 偏移字符工具：把像素偏移量转换为资源包 space 字体中的最短字符组合
- * （1/2/4/8/16/32/64/128 二进制约减），用于在位图渲染中精确定位游标/判定区。
- * 与字体名分离返回（{@link #raw(int)} + {@link #offsetFont()}），
- * 由 ChatJson 组装为带 font 字段的 ChatComponent JSON 段。
+ * 偏移字符工具：把像素偏移量转换为资源包 space 字体字符组合（二进制贪心），用于位图定位。
  */
 public final class OffsetChars {
 
@@ -74,13 +73,48 @@ public final class OffsetChars {
         return font == null ? ' ' : font.getBaseChar();
     }
 
-    /** 位图红格字符。 */
-    public static char redChar() {
-        return font == null ? ' ' : font.getRedChar();
+    /** 位图未完成格字符（判定点未命中）。 */
+    public static char unhitChar() {
+        return font == null ? ' ' : font.getUnhitChar();
     }
 
-    /** 位图指针格字符。 */
-    public static char pointerChar() {
-        return font == null ? ' ' : font.getPointerChar();
+    /** 位图游标格字符（当前游标）。 */
+    public static char cursorChar() {
+        return font == null ? ' ' : font.getCursorChar();
+    }
+
+    /** 位图完成格字符（判定点已命中）。 */
+    public static char doneChar() {
+        return font == null ? ' ' : font.getDoneChar();
+    }
+
+    /** 位图左端边框字符。 */
+    public static char leftBorderChar() {
+        return font == null ? ' ' : font.getLeftBorderChar();
+    }
+
+    /** 位图右端边框字符。 */
+    public static char rightBorderChar() {
+        return font == null ? ' ' : font.getRightBorderChar();
+    }
+
+    /** 机关 A 普通态码位（tumbler-bar 玩法）。 */
+    public static char aChar(int state) {
+        return font == null ? ' ' : font.getAChar(state);
+    }
+
+    /** 机关 A 特殊态码位（尝试失败时显示）。 */
+    public static char aSpecialChar(int state) {
+        return font == null ? ' ' : font.getASpecialChar(state);
+    }
+
+    /** 机关 B 状态码位。 */
+    public static char bChar(int state) {
+        return font == null ? ' ' : font.getBChar(state);
+    }
+
+    /** 机关转轮背景块字符列表（tumbler-bar 背景大图切块，按序并列铺满整条）。 */
+    public static List<Character> tumblerBgChars() {
+        return font == null ? List.of(' ') : font.getTumblerBgChars();
     }
 }

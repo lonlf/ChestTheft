@@ -1,4 +1,4 @@
-package com.lonleaf.chesttheft.minigame.game.movingbar;
+package com.lonleaf.chesttheft.minigame;
 
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListener;
@@ -24,14 +24,21 @@ public final class RidingController implements PacketListener {
     private final Player player;
     /** 方向回调（netty 线程调用）：-1 左 / 0 无 / 1 右，每次输入包触发一次。 */
     private final IntConsumer onDirection;
+    /** 前进（W 键）状态回调（netty 线程调用）：true=按下 / false=松开，可为 null 忽略。 */
+    private final java.util.function.Consumer<Boolean> onForward;
     private WrapperEntity mount;
     /** 已注册的输入包监听句柄，stop 时按此注销。 */
     private PacketListenerCommon listener;
     private volatile boolean active;
 
     public RidingController(Player player, IntConsumer onDirection) {
+        this(player, onDirection, null);
+    }
+
+    public RidingController(Player player, IntConsumer onDirection, java.util.function.Consumer<Boolean> onForward) {
         this.player = player;
         this.onDirection = onDirection;
+        this.onForward = onForward;
     }
 
     /** 进入骑乘状态：生成隐形坐骑并上马，注册输入包监听。 */
@@ -84,5 +91,8 @@ public final class RidingController implements PacketListener {
         WrapperPlayClientPlayerInput input = new WrapperPlayClientPlayerInput(event);
         int dir = input.isLeft() ? -1 : input.isRight() ? 1 : 0;
         onDirection.accept(dir);
+        if (onForward != null) {
+            onForward.accept(input.isForward());
+        }
     }
 }

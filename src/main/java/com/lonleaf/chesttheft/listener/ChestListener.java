@@ -413,36 +413,18 @@ public class ChestListener implements Listener {
             return;
         }
 
-        if (session.checkSuccess()) {
-            Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT);
-            triggerManager.fire(TriggerType.SUCCESS, new TriggerContext(player, BlockLocation.from(session.getTarget())));
-            fireLockTrigger(session.getTarget(), TriggerType.SUCCESS, player);
-            // 战利品箱等自定义目标：成功后执行回调打开；否则打开开始撬锁时的目标箱子（判定时点击的可能是任意方块 / 空气）
-            Runnable onSuccess = session.getOnSuccess();
-            if (onSuccess != null) {
-                onSuccess.run();
-            } else {
-                Block target = session.getTarget();
-                if (target != null && target.getType() == Material.CHEST) {
-                    // 撬锁成功打开前触发打开事件：外部保护集成在此为玩家临时授权，避免打开被 Bolt 拦截
-                    ChestOpenEvent openEvent = new ChestOpenEvent(player, target, BlockLocation.from(target));
-                    Bukkit.getPluginManager().callEvent(openEvent);
-                    if (openEvent.isCancelled()) {
-                        gameManager.endGame(player);
-                        return;
-                    }
-                    target.getState().update(true);
-                    player.openInventory(((org.bukkit.block.Chest) target.getState()).getInventory());
-                    // 授予限时开箱授权：成功后在配置时长内可随时打开该箱子
-                    gameManager.grantAccess(player, BlockLocation.from(target));
-                }
+        switch (session.onClick()) {
+            case SUCCESS -> gameManager.successGame(session);
+            case FAIL -> {
+                Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
+                triggerManager.fire(TriggerType.FAIL, new TriggerContext(player, BlockLocation.from(session.getTarget())));
+                fireLockTrigger(session.getTarget(), TriggerType.FAIL, player);
+                gameManager.endGame(player);
             }
-        } else {
-            Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
-            triggerManager.fire(TriggerType.FAIL, new TriggerContext(player, BlockLocation.from(session.getTarget())));
-            fireLockTrigger(session.getTarget(), TriggerType.FAIL, player);
+            // 命中但需继续（多阶段玩法如节奏条）：会话内部已更新命中状态并刷新进度条，不结束会话
+            case CONTINUE -> {
+            }
         }
-        gameManager.endGame(player);
     }
 
     private void startNewGame(PlayerInteractEvent event, Player player) {

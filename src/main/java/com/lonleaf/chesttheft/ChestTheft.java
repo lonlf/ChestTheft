@@ -14,6 +14,7 @@ import com.lonleaf.chesttheft.listener.KeyGlowListener;
 import com.lonleaf.chesttheft.lootchest.LootChestConfigManager;
 import com.lonleaf.chesttheft.lootchest.LootChestListener;
 import com.lonleaf.chesttheft.lootchest.LootChestManager;
+import com.lonleaf.chesttheft.message.BitmapCalculator;
 import com.lonleaf.chesttheft.message.OffsetChars;
 import com.lonleaf.chesttheft.packet.PacketManager;
 import com.lonleaf.chesttheft.protection.ProtectionListener;
@@ -79,8 +80,9 @@ public final class ChestTheft extends JavaPlugin {
         if (config.isLanguageDetected()) {
             getLogger().info(Messages.getLog(Messages.LOG_LANG_DETECTED, config.getDetectedLocale(), config.getLanguage()));
         }
-        // 位图渲染：初始化偏移字符工具（字体/码位配置，材质包由服主自行准备与分发）
+        // 位图渲染：初始化偏移字符工具与位图计算工具（字体/码位/资源包参数配置，材质包由服主自行准备与分发）
         OffsetChars.init(config.getFontConfig());
+        BitmapCalculator.init(config.getFontConfig());
 
         databaseManager = new DatabaseManager(this, config);
         ChestService chestService = new ChestService(databaseManager.getDatabase());

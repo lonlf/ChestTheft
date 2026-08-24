@@ -1,4 +1,4 @@
-package com.lonleaf.chesttheft.minigame.game.movingbar;
+package com.lonleaf.chesttheft.minigame.movingbar;
 
 import com.lonleaf.chesttheft.minigame.MiniGame;
 import com.lonleaf.chesttheft.minigame.MiniGameContext;

@@ -3,6 +3,7 @@ package com.lonleaf.chesttheft.command;
 import com.lonleaf.chesttheft.ChestTheft;
 import com.lonleaf.chesttheft.command.commands.CheckCommand;
 import com.lonleaf.chesttheft.command.commands.Command;
+import com.lonleaf.chesttheft.command.commands.DebugCommand;
 import com.lonleaf.chesttheft.command.commands.GiveCommand;
 import com.lonleaf.chesttheft.command.commands.LootChestCommand;
 import com.lonleaf.chesttheft.command.commands.ReloadCommand;
@@ -28,6 +29,7 @@ public class CommandManager {
     private final Command checkCommand;
     private final Command reloadCommand;
     private final Command lootChestCommand;
+    private final Command debugCommand;
 
     public CommandManager(ChestTheft plugin, ItemManager itemManager, ItemTagger itemTagger,
                           ItemConfigManager itemConfigManager, PluginConfig config, GameManager gameManager,
@@ -39,6 +41,7 @@ public class CommandManager {
         this.checkCommand = new CheckCommand(itemManager);
         this.reloadCommand = new ReloadCommand(config, itemConfigManager, gameManager, lockConfigManager, triggerManager, lootChestManager);
         this.lootChestCommand = new LootChestCommand(lootChestManager);
+        this.debugCommand = new DebugCommand(gameManager, lockConfigManager);
         registerCommands();
     }
 
@@ -56,11 +59,12 @@ public class CommandManager {
                 result.add(checkCommand.execute(sender, args));
                 result.add(reloadCommand.execute(sender, args));
                 result.add(lootChestCommand.execute(sender, args));
+                result.add(debugCommand.execute(sender, args));
                 return result.contains(Boolean.TRUE);
             });
             chestTheftCommand.setTabCompleter((sender, command, label, args) -> {
                 if (args.length == 0) {
-                    return List.of("give", "setitem", "check", "reload", "lootchest");
+                    return List.of("give", "setitem", "check", "reload", "lootchest", "debug");
                 }
                 return switch (args[0]) {
                     case "give" -> giveCommand.completeList(args);
@@ -68,7 +72,8 @@ public class CommandManager {
                     case "check" -> checkCommand.completeList(args);
                     case "reload" -> reloadCommand.completeList(args);
                     case "lootchest" -> lootChestCommand.completeList(args);
-                    default -> List.of("give", "setitem", "check", "reload", "lootchest");
+                    case "debug" -> debugCommand.completeList(args);
+                    default -> List.of("give", "setitem", "check", "reload", "lootchest", "debug");
                 };
             });
         }

@@ -1,10 +1,14 @@
 # English (en_gb)
-success: "&aPicklock successful!"
+success: "&aPicklock successful! The chest is unlocked — open it!"
 fail: "&cPicklock failed!"
 startPicking: "&aStart picking!"
 cancelPicking: "&aPicklocking cancelled!"
 pickInterrupted: "&cPicklocking interrupted!"
-rule: "&aPicklock started! Click when the green cursor is inside the red zone!"
+rule: "&aPicklock started! The cursor moves automatically — click when it enters the unhit zone!"
+ruleRhythm: "&aPicklock started! The cursor moves automatically — click each unhit point in order to unlock!"
+ruleRide: "&aPicklock started! Move the cursor with A/D and click when it enters the unhit zone!"
+ruleRhythmRide: "&aPicklock started! Move the cursor with A/D and click each unhit point in order to unlock!"
+ruleTumbler: "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!"
 lockedIt: "&aLocked successfully"
 chestLocked: "&cThis chest is locked!"
 gameTimeout: "&cPicklock timed out!"
@@ -33,7 +37,9 @@ chestProtectedLockDenied: "&cThis chest is protected by LWC/Bolt! You cannot loc
 chestProtectedAccessDenied: "&cThis chest is protected by LWC/Bolt! You cannot operate it."
 playerOnly: "&cThis command can only be used by players!"
 reloaded: "&aConfiguration reloaded!"
-usage: "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft reload"
+usage: "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft debug minigame <level>\n&e  /chesttheft reload"
+debugGameStart: "&aDebug: started {0} minigame (level {1})"
+debugLevelInvalid: "&cInvalid level: {0}"
 
 # ---- Item lore (display info injected via protocol packets) ----
 loreType: "&7Type: &f{0}"

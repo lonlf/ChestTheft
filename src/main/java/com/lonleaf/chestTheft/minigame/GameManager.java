@@ -8,8 +8,11 @@ import com.lonleaf.chesttheft.service.ChestService;
 import com.lonleaf.chesttheft.trigger.TriggerContext;
 import com.lonleaf.chesttheft.trigger.TriggerManager;
 import com.lonleaf.chesttheft.trigger.TriggerType;
-import com.lonleaf.chesttheft.minigame.game.movingbar.MovingBarMiniGame;
+import com.lonleaf.chesttheft.minigame.movingbar.MovingBarMiniGame;
+import com.lonleaf.chesttheft.minigame.rhythmbar.RhythmBarMiniGame;
+import com.lonleaf.chesttheft.minigame.tumblerbar.TumblerBarMiniGame;
 import org.bukkit.block.Block;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -44,8 +47,10 @@ public class GameManager implements Listener {
         this.triggerManager = triggerManager;
         this.chestService = chestService;
         this.itemManager = itemManager;
-        // 内置小游戏：移动游标（moving-bar）；其他玩法通过 registerMiniGame 注册扩展
+        // 内置小游戏：移动游标（moving-bar）、节奏条（rhythm-bar）、机关转轮（tumbler-bar）；其他玩法通过 registerMiniGame 注册扩展
         registerMiniGame(new MovingBarMiniGame());
+        registerMiniGame(new RhythmBarMiniGame());
+        registerMiniGame(new TumblerBarMiniGame());
     }
 
     /** 注册小游戏类型：已存在时以新定义覆盖。 */
@@ -115,6 +120,36 @@ public class GameManager implements Listener {
             session.stop();
             cooldowns.put(player.getUniqueId(), System.currentTimeMillis());
         }
+    }
+
+    /** 会话主动失败结束（如节奏条光标越过判定点未命中）：发送失败消息、触发失败触发器并结束会话。 */
+    public void failGame(MiniGameSession session) {
+        Player player = session.getPlayer();
+        Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
+        triggerManager.fire(TriggerType.FAIL, new TriggerContext(player, BlockLocation.from(session.getTarget())));
+        fireLockTrigger(session.getTarget(), TriggerType.FAIL, player);
+        endGame(player);
+    }
+
+    /** 会话主动成功结束（按键类玩法满足条件时调用）：发送成功消息、触发成功触发器，
+     *  战利品箱执行回调或授予开箱授权（成功后由玩家自行右键打开）并结束会话。 */
+    public void successGame(MiniGameSession session) {
+        Player player = session.getPlayer();
+        Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT);
+        triggerManager.fire(TriggerType.SUCCESS, new TriggerContext(player, BlockLocation.from(session.getTarget())));
+        fireLockTrigger(session.getTarget(), TriggerType.SUCCESS, player);
+        // 战利品箱等自定义目标：成功后执行回调打开；普通箱子不再自动打开，
+        // 改为授予开箱授权（access-duration 限时多次 / access-once-window 一次性），由玩家自行右键打开
+        Runnable onSuccess = session.getOnSuccess();
+        if (onSuccess != null) {
+            onSuccess.run();
+        } else {
+            Block target = session.getTarget();
+            if (target != null && target.getType() == Material.CHEST) {
+                grantAccess(player, BlockLocation.from(target));
+            }
+        }
+        endGame(player);
     }
 
     public boolean isPlaying(Player player) {
@@ -213,12 +248,12 @@ public class GameManager implements Listener {
         Messages.send(player, Messages.PICK_INTERRUPTED, Messages.PICK_INTERRUPTED_FORMAT);
         BlockLocation location = BlockLocation.from(session.getTarget());
         triggerManager.fire(TriggerType.INTERRUPTED, new TriggerContext(player, location));
-        fireLockTrigger(session.getTarget(), player);
+        fireLockTrigger(session.getTarget(), TriggerType.INTERRUPTED, player);
         endGame(player);
     }
 
-    /** 触发目标锁物品自带的打断触发器；锁未配置时不处理。 */
-    private void fireLockTrigger(Block target, Player player) {
+    /** 触发目标锁物品自带的触发器；锁未配置时不处理。 */
+    private void fireLockTrigger(Block target, TriggerType type, Player player) {
         if (target == null) {
             return;
         }
@@ -228,9 +263,14 @@ public class GameManager implements Listener {
         }
         String triggerData = itemManager.getLockTrigger(lockItem);
         if (triggerData != null) {
-            triggerManager.fireForLock(triggerData, TriggerType.INTERRUPTED,
+            triggerManager.fireForLock(triggerData, type,
                     new TriggerContext(player, BlockLocation.from(target)));
         }
+    }
+
+    /** 触发目标锁物品自带的打断触发器；锁未配置时不处理。 */
+    private void fireLockTrigger(Block target, Player player) {
+        fireLockTrigger(target, TriggerType.INTERRUPTED, player);
     }
 
     public JavaPlugin getPlugin() {

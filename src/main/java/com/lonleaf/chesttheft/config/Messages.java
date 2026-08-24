@@ -51,6 +51,10 @@ public class Messages {
     public static volatile String CANCEL_PICKING;
     public static volatile String PICK_INTERRUPTED;
     public static volatile String RULE;
+    public static volatile String RULE_RHYTHM;
+    public static volatile String RULE_RIDE;
+    public static volatile String RULE_RHYTHM_RIDE;
+    public static volatile String RULE_TUMBLER;
     public static volatile String LOCKED_IT;
     public static volatile String CHEST_LOCKED;
     public static volatile String GAME_TIMEOUT;
@@ -80,6 +84,8 @@ public class Messages {
     public static volatile String PLAYER_ONLY;
     public static volatile String RELOADED;
     public static volatile String USAGE;
+    public static volatile String DEBUG_GAME_START;
+    public static volatile String DEBUG_LEVEL_INVALID;
 
     // ============ 物品 Lore 展示信息（协议包注入，固定文本样式） ============
 
@@ -128,6 +134,8 @@ public class Messages {
     public static volatile String PLAYER_ONLY_FORMAT;
     public static volatile String RELOADED_FORMAT;
     public static volatile String USAGE_FORMAT;
+    public static volatile String DEBUG_GAME_START_FORMAT;
+    public static volatile String DEBUG_LEVEL_INVALID_FORMAT;
 
     // ==================== 服务器日志 ====================
 
@@ -289,9 +297,11 @@ public class Messages {
         CHEST_PROTECTED_LOCK_DENIED_FORMAT = formats.getOrDefault("chestProtectedLockDenied", "message");
         CHEST_PROTECTED_ACCESS_DENIED_FORMAT = formats.getOrDefault("chestProtectedAccessDenied", "message");
         PLAYER_ONLY_FORMAT = formats.getOrDefault("playerOnly", "message");
-        // USAGE 与 RELOADED 仅管理员可见，固定使用聊天消息，不参与显示方式配置
+        // USAGE、RELOADED 与 debug 为管理员命令，固定使用聊天消息，不参与显示方式配置
         USAGE_FORMAT = "message";
         RELOADED_FORMAT = "message";
+        DEBUG_GAME_START_FORMAT = "message";
+        DEBUG_LEVEL_INVALID_FORMAT = "message";
     }
 
     /** 获取当前语言代码。 */
@@ -472,12 +482,16 @@ public class Messages {
      */
     private static void verifyKeys() {
         // 玩家消息
-        SUCCESS = messages.getOrDefault("success", "&aPicklock successful!");
+        SUCCESS = messages.getOrDefault("success", "&aPicklock successful! The chest is unlocked — open it!");
         FAIL = messages.getOrDefault("fail", "&cPicklock failed!");
         START_PICKING = messages.getOrDefault("startPicking", "&aStart picking!");
         CANCEL_PICKING = messages.getOrDefault("cancelPicking", "&aPicklocking cancelled!");
         PICK_INTERRUPTED = messages.getOrDefault("pickInterrupted", "&cPicklocking interrupted!");
-        RULE = messages.getOrDefault("rule", "&aPicklock started! Click when the green cursor is inside the red zone!");
+        RULE = messages.getOrDefault("rule", "&aPicklock started! The cursor moves automatically — click when it enters the unhit zone!");
+        RULE_RHYTHM = messages.getOrDefault("ruleRhythm", "&aPicklock started! The cursor moves automatically — click each unhit point in order to unlock!");
+        RULE_RIDE = messages.getOrDefault("ruleRide", "&aPicklock started! Move the cursor with A/D and click when it enters the unhit zone!");
+        RULE_RHYTHM_RIDE = messages.getOrDefault("ruleRhythmRide", "&aPicklock started! Move the cursor with A/D and click each unhit point in order to unlock!");
+        RULE_TUMBLER = messages.getOrDefault("ruleTumbler", "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!");
         LOCKED_IT = messages.getOrDefault("lockedIt", "&aLocked successfully");
         CHEST_LOCKED = messages.getOrDefault("chestLocked", "&cThis chest is locked!");
         GAME_TIMEOUT = messages.getOrDefault("gameTimeout", "&cPicklock timed out!");
@@ -506,7 +520,9 @@ public class Messages {
         CHEST_PROTECTED_ACCESS_DENIED = messages.getOrDefault("chestProtectedAccessDenied", "&cThis chest is protected by a protection plugin! You cannot operate it.");
         PLAYER_ONLY = messages.getOrDefault("playerOnly", "&cThis command can only be used by players!");
         RELOADED = messages.getOrDefault("reloaded", "&aConfiguration reloaded!");
-        USAGE = messages.getOrDefault("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft reload");
+        USAGE = messages.getOrDefault("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft debug minigame <level>\n&e  /chesttheft reload");
+        DEBUG_GAME_START = messages.getOrDefault("debugGameStart", "&aDebug: started {0} minigame (level {1})");
+        DEBUG_LEVEL_INVALID = messages.getOrDefault("debugLevelInvalid", "&cInvalid level: {0}");
 
         LORE_TYPE = messages.getOrDefault("loreType", "&7Type: &f{0}");
         LORE_PAIRED = messages.getOrDefault("lorePaired", "&aPaired: &f{0}");
@@ -590,12 +606,15 @@ public class Messages {
     private static Map<String, String> defaultFileContent(String lang) {
         Map<String, String> map = new LinkedHashMap<>();
         if ("zh_cn".equals(lang)) {
-            map.put("success", "&a撬锁成功！");
+            map.put("success", "&a撬锁成功！箱子已解锁，请右键打开箱子！");
             map.put("fail", "&c撬锁失败！");
             map.put("startPicking", "&a开始撬锁！");
             map.put("cancelPicking", "&a已取消撬锁！");
             map.put("pickInterrupted", "&c撬锁被中断！");
-            map.put("rule", "&a撬锁开始！当绿色光标走到红色区域时点击鼠标！");
+            map.put("rule", "&a撬锁开始！游标自动往复移动，当游标走到未完成判定区时点击鼠标！");
+            map.put("ruleRhythm", "&a撬锁开始！游标自动往复移动，依次在未完成判定点处点击，全部命中即可开锁！");
+            map.put("ruleRide", "&a撬锁开始！按 A/D 键移动游标，当游标走到未完成判定区时点击鼠标！");
+            map.put("ruleRhythmRide", "&a撬锁开始！按 A/D 键移动游标，依次在未完成判定点处点击，全部命中即可开锁！");
             map.put("lockedIt", "&a上锁成功");
             map.put("chestLocked", "&c这个箱子已上锁！");
             map.put("gameTimeout", "&c撬锁超时！");
@@ -623,7 +642,9 @@ public class Messages {
             map.put("chestProtectedAccessDenied", "&c该箱子受保护插件保护，无法操作");
             map.put("playerOnly", "&c该命令只能由玩家执行！");
             map.put("reloaded", "&a配置已重载");
-            map.put("usage", "&e用法:\n&e  /chesttheft give <玩家> <物品ID> [数量]\n&e  /chesttheft setitem <物品ID>\n&e  /chesttheft check\n&e  /chesttheft reload");
+            map.put("usage", "&e用法:\n&e  /chesttheft give <玩家> <物品ID> [数量]\n&e  /chesttheft setitem <物品ID>\n&e  /chesttheft check\n&e  /chesttheft lootchest <档案ID>\n&e  /chesttheft debug minigame <等级>\n&e  /chesttheft reload");
+            map.put("debugGameStart", "&a调试模式：开始 {0} 小游戏（等级 {1}）");
+            map.put("debugLevelInvalid", "&c无效的等级：{0}");
             map.put("loreType", "&7类型: &f{0}");
             map.put("lorePaired", "&a已配对: &f{0}");
             map.put("loreNotPaired", "&7未配对");
@@ -682,12 +703,16 @@ public class Messages {
             map.put("logMessagesInit", "消息系统已初始化（语言: {0}）");
             map.put("logMessagesReload", "消息已重载（语言: {0}）");
         } else {
-            map.put("success", "&aPicklock successful!");
+            map.put("success", "&aPicklock successful! The chest is unlocked — open it!");
             map.put("fail", "&cPicklock failed!");
             map.put("startPicking", "&aStart picking!");
             map.put("cancelPicking", "&aPicklocking cancelled!");
             map.put("pickInterrupted", "&cPicklocking interrupted!");
-            map.put("rule", "&aPicklock started! Click when the green cursor is inside the red zone!");
+            map.put("rule", "&aPicklock started! The cursor moves automatically — click when it enters the unhit zone!");
+            map.put("ruleRhythm", "&aPicklock started! The cursor moves automatically — click each unhit point in order to unlock!");
+            map.put("ruleRide", "&aPicklock started! Move the cursor with A/D and click when it enters the unhit zone!");
+            map.put("ruleRhythmRide", "&aPicklock started! Move the cursor with A/D and click each unhit point in order to unlock!");
+            map.put("ruleTumbler", "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!");
             map.put("lockedIt", "&aLocked successfully");
             map.put("chestLocked", "&cThis chest is locked!");
             map.put("gameTimeout", "&cPicklock timed out!");
@@ -716,7 +741,9 @@ public class Messages {
             map.put("chestProtectedAccessDenied", "&cThis chest is protected by a protection plugin! You cannot operate it.");
             map.put("playerOnly", "&cThis command can only be used by players!");
             map.put("reloaded", "&aConfiguration reloaded!");
-            map.put("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft reload");
+            map.put("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft debug minigame <level>\n&e  /chesttheft reload");
+            map.put("debugGameStart", "&aDebug: started {0} minigame (level {1})");
+            map.put("debugLevelInvalid", "&cInvalid level: {0}");
             map.put("loreType", "&7Type: &f{0}");
             map.put("lorePaired", "&aPaired: &f{0}");
             map.put("loreNotPaired", "&7Not paired");

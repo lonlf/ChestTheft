@@ -1,11 +1,13 @@
-package com.lonleaf.chesttheft.minigame.game.movingbar;
+package com.lonleaf.chesttheft.minigame.movingbar;
 
 import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.message.BitmapCalculator;
 import com.lonleaf.chesttheft.message.ChatJson;
 import com.lonleaf.chesttheft.message.MiniMessageSender;
 import com.lonleaf.chesttheft.message.OffsetChars;
 import com.lonleaf.chesttheft.minigame.MiniGameContext;
 import com.lonleaf.chesttheft.minigame.MiniGameSession;
+import com.lonleaf.chesttheft.minigame.RidingController;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.ChatColor;
@@ -13,7 +15,7 @@ import org.bukkit.ChatColor;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 移动游标玩法规则：光标在进度条上移动，玩家需在光标进入红区时点击判定。
+ * 移动游标玩法规则：光标在进度条上移动，玩家需在光标进入未完成判定区时点击判定。
  * 支持两种游标控制：oscillate=true 自动往复移动；false 骑乘模式（A/D 键控制左右移动）。
  */
 public class MovingBarSession extends MiniGameSession {
@@ -23,8 +25,8 @@ public class MovingBarSession extends MiniGameSession {
     private RidingController ridingController;
     private int cursorPos = 0;
     private boolean movingRight = true;
-    private int redStart;
-    private int redLength;
+    private int unhitStart;
+    private int unhitLength;
     /** 骑乘模式：netty 线程写入的当前方向（-1 左 / 0 无 / 1 右）。 */
     private volatile int inputDirection;
     /** 骑乘模式：上一帧方向与步进冷却（仅主线程读写）。 */
@@ -34,8 +36,8 @@ public class MovingBarSession extends MiniGameSession {
     public MovingBarSession(MiniGameContext context) {
         super(context);
         this.barConfig = MovingBarConfig.from(context.getConfig().getSection());
-        this.redLength = barConfig.getRedLength();
-        this.redStart = ThreadLocalRandom.current().nextInt(3, barConfig.getBarLength() - redLength - 2);
+        this.unhitLength = barConfig.getUnhitLength();
+        this.unhitStart = ThreadLocalRandom.current().nextInt(3, barConfig.getBarLength() - unhitLength - 2);
     }
 
     @Override
@@ -46,8 +48,10 @@ public class MovingBarSession extends MiniGameSession {
 
     @Override
     protected void onStart() {
-        // 规则提示固定显示在动作栏（不参与配置自定义），与进度条标题同步启动；不同通道互不覆盖
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(Messages.get(Messages.RULE)));
+        // 规则提示在动作栏（周期重发保持持续显示），与进度条标题不同通道互不覆盖
+        repeatActionBar(() -> player.spigot().sendMessage(ChatMessageType.ACTION_BAR,
+                        new TextComponent(Messages.get(barConfig.isOscillate() ? Messages.RULE : Messages.RULE_RIDE))),
+                40L);
         if (!barConfig.isOscillate()) {
             // 骑乘模式：发包让玩家骑上隐形坐骑，A/D 键控制游标
             ridingController = new RidingController(player, dir -> inputDirection = dir);
@@ -121,44 +125,69 @@ public class MovingBarSession extends MiniGameSession {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < barConfig.getBarLength(); i++) {
             if (i == cursorPos) {
-                sb.append(ChatColor.GREEN).append('|');
-            } else if (i >= redStart && i < redStart + redLength) {
+                sb.append(ChatColor.YELLOW).append('|');
+            } else if (i >= unhitStart && i < unhitStart + unhitLength) {
                 sb.append(ChatColor.RED).append('|');
             } else {
                 sb.append(ChatColor.WHITE).append('|');
             }
         }
-        // 进度条显示在标题上；fadeIn/fadeOut 为 0 避免刷新闪烁，stay 覆盖到下一次刷新
-        player.sendTitle(sb.toString(), "", 0, barConfig.getMoveInterval() + 1, 0);
+        // 进度条显示在副标题上（title 留空白占位保持位置稳定）；fadeIn/fadeOut 为 0 避免刷新闪烁，stay 覆盖到下一次刷新
+        player.sendTitle(" ", sb.toString(), 0, barConfig.getMoveInterval() + 1, 0);
     }
 
     /**
-     * 位图渲染：逐格选择底格/红格/指针格字符，在相邻格之间插入 -1px 偏移字符
-     * 补偿客户端渲染中每个字形后固定的 1px 间隙（引擎行为），使格子无缝贴合。
-     * 总宽仍为 barLength 格，title 保持居中。
+     * 位图渲染：两端边框格 + 中间普通格；游标在端点与边框格重叠（覆盖主体、露出外侧边框）。
+     * 相邻字符间插入间隙补偿偏移使格子无缝贴合，总宽固定为 barLength 格。
      */
     private void sendBitmapBar() {
         int barLength = barConfig.getBarLength();
+        int cellGap = BitmapCalculator.cellGap();
+        int edgeGap = BitmapCalculator.edgeGap();
+        int leftBack = BitmapCalculator.leftOverlayBack();
+        int leftTail = BitmapCalculator.leftOverlayTail();
+        int rightBack = BitmapCalculator.rightOverlayBack();
         ChatJson json = ChatJson.create().noShadow();
         for (int i = 0; i < barLength; i++) {
-            char c;
+            boolean last = i == barLength - 1;
             if (i == cursorPos) {
-                c = OffsetChars.pointerChar();
-            } else if (i >= redStart && i < redStart + redLength) {
-                c = OffsetChars.redChar();
+                if (i == 0) {
+                    // 左端游标：边框格打底，回退到其内部再画游标，露出外侧 1px 边框
+                    json.text(String.valueOf(OffsetChars.leftBorderChar()), OffsetChars.barFont());
+                    json.text(OffsetChars.raw(-leftBack), OffsetChars.offsetFont());
+                    json.text(String.valueOf(OffsetChars.cursorChar()), OffsetChars.barFont());
+                    if (!last) {
+                        json.text(OffsetChars.raw(-leftTail), OffsetChars.offsetFont());
+                    }
+                } else if (last) {
+                    // 右端游标：边框格打底，回退到其起点再画游标，露出外侧 1px 边框
+                    json.text(String.valueOf(OffsetChars.rightBorderChar()), OffsetChars.barFont());
+                    json.text(OffsetChars.raw(-rightBack), OffsetChars.offsetFont());
+                    json.text(String.valueOf(OffsetChars.cursorChar()), OffsetChars.barFont());
+                } else {
+                    json.text(String.valueOf(OffsetChars.cursorChar()), OffsetChars.barFont());
+                    json.text(OffsetChars.raw(-cellGap), OffsetChars.offsetFont());
+                }
+            } else if (i == 0) {
+                json.text(String.valueOf(OffsetChars.leftBorderChar()), OffsetChars.barFont());
+                if (!last) {
+                    json.text(OffsetChars.raw(-edgeGap), OffsetChars.offsetFont());
+                }
+            } else if (last) {
+                json.text(String.valueOf(OffsetChars.rightBorderChar()), OffsetChars.barFont());
+            } else if (i >= unhitStart && i < unhitStart + unhitLength) {
+                json.text(String.valueOf(OffsetChars.unhitChar()), OffsetChars.barFont());
+                json.text(OffsetChars.raw(-cellGap), OffsetChars.offsetFont());
             } else {
-                c = OffsetChars.baseChar();
-            }
-            json.text(String.valueOf(c), OffsetChars.barFont());
-            if (i < barLength - 1) {
-                json.text(OffsetChars.raw(-1), OffsetChars.offsetFont());
+                json.text(String.valueOf(OffsetChars.baseChar()), OffsetChars.barFont());
+                json.text(OffsetChars.raw(-cellGap), OffsetChars.offsetFont());
             }
         }
-        MiniMessageSender.sendTitle(player, json.build(), null, 0, barConfig.getMoveInterval() + 1, 0);
+        MiniMessageSender.sendTitle(player, "{\"text\":\" \"}", json.build(), 0, barConfig.getMoveInterval() + 1, 0);
     }
 
     @Override
     public boolean checkSuccess() {
-        return cursorPos >= redStart && cursorPos < redStart + redLength;
+        return cursorPos >= unhitStart && cursorPos < unhitStart + unhitLength;
     }
 }
