@@ -1,6 +1,9 @@
 package com.lonleaf.chesttheft.minigame.tumblerbar;
 
+import com.lonleaf.chesttheft.config.Messages;
 import org.bukkit.configuration.ConfigurationSection;
+
+import java.util.logging.Logger;
 
 /**
  * 机关转轮小游戏（tumbler-bar）特有配置：A/B 状态数、可解锁状态、位置、尝试次数与渲染方式。
@@ -52,6 +55,11 @@ public class TumblerBarConfig {
 
     /** 从配置段解析玩法特有参数，缺失键使用默认值并做范围约束（null 表示全用默认值）。 */
     public static TumblerBarConfig from(ConfigurationSection section) {
+        return from(section, null);
+    }
+
+    /** 从配置段解析玩法特有参数（logger 用于输出 b-final 钳制告警，可为 null）。 */
+    public static TumblerBarConfig from(ConfigurationSection section, Logger logger) {
         int aStates = Math.max(2, section == null ? 4 : section.getInt("a-states", 4));
         int initialA = clamp(0, aStates - 1, section == null ? 0 : section.getInt("initial-a", 0));
         int unlockA = clamp(0, aStates - 1, section == null ? 1 : section.getInt("unlock-a", 1));
@@ -61,6 +69,13 @@ public class TumblerBarConfig {
             bFinal = bStates - 1;
         } else {
             bFinal = clamp(1, bStates - 1, section.getInt("b-final"));
+            // 成功条件是 A 对准时 B 可达 b-states-1 且与 b-final 相等：b-final 取其他值时游戏永远无法胜利，钳制并告警
+            if (bFinal != bStates - 1) {
+                if (logger != null) {
+                    logger.warning(Messages.getLog(Messages.LOG_TUMBLER_BFINAL_INVALID, bStates - 1));
+                }
+                bFinal = bStates - 1;
+            }
         }
         int aOffset = Math.max(0, section == null ? 16 : section.getInt("a-offset", 16));
         int bOffset = Math.max(aOffset, section == null ? 80 : section.getInt("b-offset", 80));

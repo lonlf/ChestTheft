@@ -2,6 +2,7 @@ package com.lonleaf.chesttheft.config;
 
 import com.lonleaf.chesttheft.ChestTheft;
 import org.bukkit.Color;
+import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -17,9 +18,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.regex.Pattern;
 
@@ -100,6 +103,8 @@ public class PluginConfig {
     private volatile String detectedLocale;
     private volatile GameConfig gameConfig;
     private volatile boolean keyUnlockEnabled;
+    /** 非上锁者手持配对钥匙是否可卸锁（key.unlock-by-holder）；false 时仅上锁者本人可卸锁。 */
+    private volatile boolean keyUnlockByHolder;
     private volatile boolean keyPairEnabled;
     private volatile Action keyInteractionAction;
     private volatile boolean keyInteractionSneak;
@@ -120,6 +125,8 @@ public class PluginConfig {
     private volatile List<String> lootChestExcludedWorlds;
     /** 受 LWC / Bolt 保护的箱子是否启用本插件撬锁功能；false 时不可上锁，已上锁则保护所有者交互时自动卸锁。 */
     private volatile boolean protectionPickingEnabled;
+    /** 允许上锁的方块类型集合（lock.lockable-blocks），启动时校验非法项并跳过。 */
+    private volatile Set<Material> lockableBlocks;
     /** 位图渲染字体配置（font 小节）：偏移字体/位图字体与码位。 */
     private volatile FontConfig fontConfig;
     /** 各消息显示方式配置（message-format 小节）：消息键 → message/actionbar/title/subtitle。 */
@@ -282,6 +289,7 @@ public class PluginConfig {
 
         gameConfig = GameConfig.from(config.getConfigurationSection("game"));
         keyUnlockEnabled = config.getBoolean("key.unlock-enabled", true);
+        keyUnlockByHolder = config.getBoolean("key.unlock-by-holder", false);
         keyPairEnabled = config.getBoolean("key.pair-enabled", true);
         keyInteractionAction = parseAction(config.getString("key.interaction-action", "LEFT"));
         keyInteractionSneak = config.getBoolean("key.interaction-sneak", true);
@@ -302,6 +310,19 @@ public class PluginConfig {
         lootChestInteractionRange = Math.max(1.0, config.getDouble("lootchest.interaction-range", 4.0));
         lootChestExcludedWorlds = config.getStringList("lootchest.worlds.exclude");
         protectionPickingEnabled = config.getBoolean("protection.picking-enabled", false);
+        // 上锁方块类型列表：非法项记日志跳过；列表为空时回退默认箱子和陷阱箱，保证上锁功能可用
+        lockableBlocks = new HashSet<>();
+        for (String name : config.getStringList("lock.lockable-blocks")) {
+            try {
+                lockableBlocks.add(Material.valueOf(name.trim().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException e) {
+                logger.warning(Messages.getLog(Messages.LOG_CONFIG_LOCKABLE_INVALID, name));
+            }
+        }
+        if (lockableBlocks.isEmpty()) {
+            lockableBlocks.add(Material.CHEST);
+            lockableBlocks.add(Material.TRAPPED_CHEST);
+        }
         fontConfig = FontConfig.from(config.getConfigurationSection("font"));
         debug = config.getBoolean("debug", false);
 
@@ -355,6 +376,16 @@ public class PluginConfig {
 
     public boolean isKeyUnlockEnabled() {
         return keyUnlockEnabled;
+    }
+
+    /** 非上锁者手持配对钥匙是否可卸锁（key.unlock-by-holder）；false 时仅上锁者本人可卸锁。 */
+    public boolean isKeyUnlockByHolder() {
+        return keyUnlockByHolder;
+    }
+
+    /** 该方块类型是否允许上锁（lock.lockable-blocks）。 */
+    public boolean isLockable(Material material) {
+        return material != null && lockableBlocks.contains(material);
     }
 
     /** 是否允许钥匙配对功能（未配对钥匙 + 交互按键，由上锁者为钥匙配对）。 */

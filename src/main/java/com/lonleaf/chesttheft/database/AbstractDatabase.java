@@ -2,6 +2,7 @@ package com.lonleaf.chesttheft.database;
 
 import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.model.BlockLocation;
+import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 
@@ -26,11 +27,17 @@ public abstract class AbstractDatabase implements Database {
 
     protected final Logger logger;
     protected final boolean debug;
-    protected Connection connection;
+    /** HikariCP 连接池：每次操作独立取用连接，finally 归还；断线后由池自动重建。 */
+    protected HikariDataSource dataSource;
 
     protected AbstractDatabase(Logger logger, boolean debug) {
         this.logger = logger;
         this.debug = debug;
+    }
+
+    /** 从连接池获取连接（操作完成后由调用方 try-with-resources 归还）。 */
+    protected final Connection getConnection() throws SQLException {
+        return dataSource.getConnection();
     }
 
     /** 返回主键列定义（区分数据库方言）。 */
@@ -50,23 +57,10 @@ public abstract class AbstractDatabase implements Database {
                 + "lock_level INT NOT NULL DEFAULT 0,"
                 + "UNIQUE(world, x, y, z)"
                 + ")";
-        try (Statement stmt = connection.createStatement()) {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_CREATE_TABLE_FAIL, TABLE), e);
-        }
-        // 旧表迁移：为缺失的列补充（列已存在时忽略错误）
-        try (Statement stmt = connection.createStatement()) {
-            stmt.executeUpdate("ALTER TABLE " + TABLE + " ADD COLUMN lock_item TEXT NOT NULL DEFAULT ''");
-        } catch (SQLException ignored) {
-        }
-        try (Statement stmt = connection.createStatement()) {
-            stmt.executeUpdate("ALTER TABLE " + TABLE + " ADD COLUMN locker_uuid VARCHAR(36) NOT NULL DEFAULT ''");
-        } catch (SQLException ignored) {
-        }
-        try (Statement stmt = connection.createStatement()) {
-            stmt.executeUpdate("ALTER TABLE " + TABLE + " ADD COLUMN lock_level INT NOT NULL DEFAULT 0");
-        } catch (SQLException ignored) {
         }
         // 临时授权记录表（崩溃残留清理用，独立一张表）
         String tempSql = "CREATE TABLE IF NOT EXISTS " + TEMP_GRANT_TABLE + " ("
@@ -79,10 +73,21 @@ public abstract class AbstractDatabase implements Database {
                 + "player VARCHAR(36) NOT NULL,"
                 + "extra TEXT NOT NULL DEFAULT ''"
                 + ")";
-        try (Statement stmt = connection.createStatement()) {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(tempSql);
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_CREATE_TABLE_FAIL, TEMP_GRANT_TABLE), e);
+        }
+        // 临时授权唯一索引（防重复记录）：两方言均用普通 CREATE INDEX，已存在时忽略错误，保证幂等
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("CREATE UNIQUE INDEX idx_temp_grant ON " + TEMP_GRANT_TABLE
+                    + " (plugin, world, x, y, z, player)");
+        } catch (SQLException e) {
+            String msg = e.getMessage();
+            // SQLite: "index idx_temp_grant already exists"；MySQL: "Duplicate key name 'idx_temp_grant'"
+            if (msg == null || !(msg.contains("already exists") || msg.contains("Duplicate key name"))) {
+                logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_CREATE_TABLE_FAIL, "idx_temp_grant"), e);
+            }
         }
     }
 
@@ -124,7 +129,7 @@ public abstract class AbstractDatabase implements Database {
     @Override
     public boolean isLocked(BlockLocation location) {
         String sql = "SELECT COUNT(*) FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -141,7 +146,7 @@ public abstract class AbstractDatabase implements Database {
     @Override
     public boolean lock(BlockLocation location, ItemStack lockItem, String lockerUuid, String token, int level) {
         String sql = "INSERT INTO " + TABLE + " (world, x, y, z, lock_item, locker_uuid, lock_token, lock_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -152,16 +157,28 @@ public abstract class AbstractDatabase implements Database {
             ps.setInt(8, level);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            // UNIQUE 约束冲突说明已上锁，属正常情况
-            if (debug) logger.log(Level.INFO, Messages.getLog(Messages.LOG_DB_LOCK_DUP, location), e);
+            if (isUniqueViolation(e)) {
+                // 唯一约束冲突 = 该位置已上锁，属正常情况
+                if (debug) logger.log(Level.INFO, Messages.getLog(Messages.LOG_DB_LOCK_DUP, location), e);
+            } else {
+                // 真实错误（断线/建表失败等）：记 SEVERE，调用方不应消耗锁物品
+                logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_LOCK_FAIL, location), e);
+            }
             return false;
         }
+    }
+
+    /** 唯一约束冲突判定：MySQL 1062/23000、SQLite 19/23505。 */
+    private static boolean isUniqueViolation(SQLException e) {
+        String state = e.getSQLState();
+        int code = e.getErrorCode();
+        return "23000".equals(state) || "23505".equals(state) || code == 1062 || code == 19;
     }
 
     @Override
     public int getLockLevel(BlockLocation location) {
         String sql = "SELECT lock_level FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -180,7 +197,7 @@ public abstract class AbstractDatabase implements Database {
     @Override
     public String getLockToken(BlockLocation location) {
         String sql = "SELECT lock_token FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -200,7 +217,7 @@ public abstract class AbstractDatabase implements Database {
     @Override
     public String getLocker(BlockLocation location) {
         String sql = "SELECT locker_uuid FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -220,7 +237,7 @@ public abstract class AbstractDatabase implements Database {
     @Override
     public boolean hasPairedKey(BlockLocation location) {
         String sql = "SELECT paired_count FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -237,7 +254,7 @@ public abstract class AbstractDatabase implements Database {
     @Override
     public void increasePairedCount(BlockLocation location) {
         String sql = "UPDATE " + TABLE + " SET paired_count = paired_count + 1 WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -252,14 +269,17 @@ public abstract class AbstractDatabase implements Database {
     public ItemStack unlock(BlockLocation location) {
         ItemStack lockItem = getLockItem(location);
         String sql = "DELETE FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
             ps.setInt(4, location.getZ());
-            ps.executeUpdate();
+            if (ps.executeUpdate() == 0) {
+                return null; // 无记录（未上锁）：不返还物品，避免"取到物品但未删除"造成的复制
+            }
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_UNLOCK_FAIL, location), e);
+            return null; // 删除失败：不返还物品，避免复制
         }
         return lockItem;
     }
@@ -267,7 +287,7 @@ public abstract class AbstractDatabase implements Database {
     @Override
     public ItemStack getLockItem(BlockLocation location) {
         String sql = "SELECT lock_item FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, location.getWorld());
             ps.setInt(2, location.getX());
             ps.setInt(3, location.getY());
@@ -285,21 +305,37 @@ public abstract class AbstractDatabase implements Database {
 
     // ==================== 临时授权记录（崩溃残留清理） ====================
 
+    /**
+     * 记录一次临时授权：先删后插，保证同一 (插件, 位置, 玩家) 只保留一行（配合唯一索引幂等）；
+     * 失败返回 false，调用方应中止授权，避免"已授权但无记录"导致崩溃后残留权限无法清理。
+     */
     @Override
-    public void recordTempGrant(String pluginType, BlockLocation location, UUID playerUuid, String extra) {
-        String sql = "INSERT INTO " + TEMP_GRANT_TABLE
+    public boolean recordTempGrant(String pluginType, BlockLocation location, UUID playerUuid, String extra) {
+        String deleteSql = "DELETE FROM " + TEMP_GRANT_TABLE
+                + " WHERE plugin = ? AND world = ? AND x = ? AND y = ? AND z = ? AND player = ?";
+        String insertSql = "INSERT INTO " + TEMP_GRANT_TABLE
                 + " (plugin, world, x, y, z, player, extra) VALUES (?, ?, ?, ?, ?, ?, ?)";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, pluginType);
-            ps.setString(2, location.getWorld());
-            ps.setInt(3, location.getX());
-            ps.setInt(4, location.getY());
-            ps.setInt(5, location.getZ());
-            ps.setString(6, playerUuid.toString());
-            ps.setString(7, extra == null ? "" : extra);
-            ps.executeUpdate();
+        try (Connection conn = getConnection();
+             PreparedStatement del = conn.prepareStatement(deleteSql);
+             PreparedStatement ins = conn.prepareStatement(insertSql)) {
+            del.setString(1, pluginType);
+            del.setString(2, location.getWorld());
+            del.setInt(3, location.getX());
+            del.setInt(4, location.getY());
+            del.setInt(5, location.getZ());
+            del.setString(6, playerUuid.toString());
+            del.executeUpdate();
+            ins.setString(1, pluginType);
+            ins.setString(2, location.getWorld());
+            ins.setInt(3, location.getX());
+            ins.setInt(4, location.getY());
+            ins.setInt(5, location.getZ());
+            ins.setString(6, playerUuid.toString());
+            ins.setString(7, extra == null ? "" : extra);
+            return ins.executeUpdate() > 0;
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
+            return false;
         }
     }
 
@@ -307,7 +343,7 @@ public abstract class AbstractDatabase implements Database {
     public List<TempGrantRecord> getTempGrants(String pluginType) {
         List<TempGrantRecord> records = new ArrayList<>();
         String sql = "SELECT world, x, y, z, player, extra FROM " + TEMP_GRANT_TABLE + " WHERE plugin = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, pluginType);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -327,7 +363,7 @@ public abstract class AbstractDatabase implements Database {
     public void deleteTempGrant(String pluginType, BlockLocation location, UUID playerUuid) {
         String sql = "DELETE FROM " + TEMP_GRANT_TABLE
                 + " WHERE plugin = ? AND world = ? AND x = ? AND y = ? AND z = ? AND player = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, pluginType);
             ps.setString(2, location.getWorld());
             ps.setInt(3, location.getX());
@@ -342,12 +378,8 @@ public abstract class AbstractDatabase implements Database {
 
     @Override
     public void close() {
-        if (connection != null) {
-            try {
-                connection.close();
-            } catch (SQLException e) {
-                logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_CLOSE_FAIL), e);
-            }
+        if (dataSource != null) {
+            dataSource.close();
         }
     }
 }

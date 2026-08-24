@@ -1,5 +1,5 @@
 ﻿# 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
-config-version: 12
+config-version: 1
 # 是否输出调试日志
 debug: false
 # 保护插件集成设置（与各类保护插件交互）
@@ -42,6 +42,19 @@ game:
   hit-count: 3       # 判定点数量
   hit-length: 2      # 每个判定点长度（格数）
   hit-min-gap: 3     # 判定点之间的最小间隔（格数）
+  # --- tumbler-bar 玩法特有参数（其他玩法不使用）：A/D 调 A、W 转 B，仅 A 处于可解锁状态时 B 可达最终状态即成功 ---
+  a-states: 4          # 机关 A 状态数（每个状态另有对应特殊态，尝试失败时显示）
+  initial-a: 0         # 尝试失败复位后 A 的初始状态
+  unlock-a: 1          # 可解锁的 A 状态（仅 A 在此状态时 B 能转到最终状态）
+  b-states: 5          # 机关 B 状态数（状态从 0 计）
+  b-final: 4           # B 最终状态（达到即成功；默认 b-states-1，配置为其他值会被钳制并告警）
+  a-offset: 16         # A 左上角相对背景左端的水平像素位置
+  b-offset: 80         # B 左上角相对背景左端的水平像素位置
+  background-length: 4 # 背景总长度（格）
+  max-attempts: 3      # 最大尝试次数（超限判撬锁失败）
+  tumbler-width: 3     # 机关 A/B 状态图宽度（格，仅 ascii 模式显示宽度；bitmap 模式图标固定 32px）
+  # 说明：move-interval（A/D 调 A 步进）与 render-mode 与上方公共参数共用同一键，等级配置中按需显式指定
+  #       tumbler 的 move-interval 代码默认 6（上方公共默认 10 用于 moving-bar/rhythm-bar）
 
 # 位图渲染（资源包字体）设置：字体名与码位须与生成的资源包一致，非特殊需求勿修改
 font:
@@ -122,10 +135,19 @@ font:
     # 垂直方向无法用配置调整：字幕渲染基线由客户端引擎硬编码，像素级垂直偏移只能改材质包 bar.json 的 ascent（见上）
     horizontal-offset: 0
 
+# 上锁方块类型设置（仅允许对以下方块类型上锁，破坏/爆炸清理与卸锁目标判定同此列表）
+lock:
+  # 允许上锁的方块类型列表；非法项启动时记日志跳过，列表为空时回退默认（箱子和陷阱箱）
+  lockable-blocks:
+    - CHEST
+    - TRAPPED_CHEST
+
 # 钥匙功能
 key:
   # 是否启用钥匙卸锁功能（已配对钥匙 + 交互按键，卸下锁并返还锁物品；卸锁必须手持钥匙）
   unlock-enabled: true
+  # 是否允许非上锁者手持配对钥匙卸锁；false（默认）时仅上锁者本人可卸锁
+  unlock-by-holder: false
   # 是否启用钥匙配对功能（未配对钥匙 + 交互按键，由上锁者为钥匙配对）
   pair-enabled: true
   # 交互按键动作: LEFT / RIGHT
@@ -176,6 +198,7 @@ message-format:
   pickingCooldown: title  # 撬锁冷却
   lockSuccess: title        # 上锁成功
   chestLocked: actionbar      # 箱子已上锁
+  lockNotLockable: message  # 方块不可上锁
   unlockSuccess: message    # 卸锁成功
   unlockConfirm: actionbar    # 卸锁确认
   pairSuccess: message      # 配对成功

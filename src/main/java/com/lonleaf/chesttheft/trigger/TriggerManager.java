@@ -1,6 +1,8 @@
 package com.lonleaf.chesttheft.trigger;
 
 import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.item.ItemDefinition;
+import com.lonleaf.chesttheft.item.ItemType;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -8,6 +10,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.File;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -19,10 +22,8 @@ public class TriggerManager {
     private final File triggerDir;
     private final ActionManager actionManager;
     private final Map<TriggerType, List<Trigger>> triggers = new EnumMap<>(TriggerType.class);
-    /** 全局触发器 id 索引（锁触发器引用形式按 id 查找用）。 */
+    /** 触发器 id 索引：全局触发器 + 物品内嵌定义转换的临时触发器（def:<物品ID>:<触发器键>），锁物品按 id 解析用。 */
     private final Map<String, Trigger> triggersById = new HashMap<>();
-    /** 锁物品自带触发器缓存：YAML 字符串 → 按类型分组的动作。 */
-    private final Map<String, Map<TriggerType, List<Action>>> lockTriggerCache = new HashMap<>();
 
     public TriggerManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -90,61 +91,92 @@ public class TriggerManager {
         }
     }
 
-    /** 触发锁物品自带的指定类型触发器；锁未配置该触发器时不处理。 */
-    public void fireForLock(String triggerData, TriggerType type, TriggerContext context) {
-        if (triggerData == null) {
+    /**
+     * 按 id 列表触发锁物品的触发器：只执行与事件类型匹配的触发器动作；
+     * 未注册的 id（如物品定义已被删除）记日志跳过，不中断其余触发器。
+     */
+    public void fireForLock(List<String> triggerIds, TriggerType type, TriggerContext context) {
+        if (triggerIds == null || triggerIds.isEmpty()) {
             return;
         }
-        Map<TriggerType, List<Action>> parsed = lockTriggerCache.get(triggerData);
-        if (parsed == null) {
-            parsed = parseLockTrigger(triggerData);
-            lockTriggerCache.put(triggerData, parsed);
-        }
-        List<Action> actions = parsed.get(type);
-        if (actions != null) {
-            for (Action action : actions) {
-                action.trigger(context);
+        for (String id : triggerIds) {
+            Trigger trigger = triggersById.get(id);
+            if (trigger == null) {
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_REF_MISSING, id, "lock-item"));
+                continue;
+            }
+            if (trigger.type() == type) {
+                for (Action action : trigger.actions()) {
+                    action.trigger(context);
+                }
             }
         }
     }
 
-    /** 解析锁物品的触发器 YAML：支持引用形式（全局触发器 id 列表，按其自身 type 分发）与内嵌定义形式（type + actions），非法项记日志跳过。 */
-    private Map<TriggerType, List<Action>> parseLockTrigger(String triggerData) {
-        Map<TriggerType, List<Action>> result = new EnumMap<>(TriggerType.class);
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(new StringReader(triggerData));
-        ConfigurationSection section = config.getConfigurationSection("triggers");
-        if (section == null) {
-            return result;
+    /**
+     * 将物品定义中的内嵌触发器注册为临时 id（def:<物品ID>:<触发器键>），动作只进内存注册表。
+     * 引用形式（值为 id 列表）无内嵌动作，跳过；须在 load() 清空注册表后调用（onEnable / reload）。
+     */
+    public void syncItemTriggers(Collection<ItemDefinition> lockDefs) {
+        if (lockDefs == null) {
+            return;
         }
-        for (String id : section.getKeys(false)) {
-            Object raw = section.get(id);
-            if (raw instanceof List<?> list) {
-                // 引用形式：按被引用全局触发器自身的 type 分发
-                for (Object o : list) {
-                    Trigger ref = triggersById.get(String.valueOf(o));
-                    if (ref == null) {
-                        plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_REF_MISSING, String.valueOf(o), id));
-                        continue;
-                    }
-                    result.computeIfAbsent(ref.type(), k -> new ArrayList<>()).addAll(ref.actions());
+        for (ItemDefinition def : lockDefs) {
+            if (def.getType() != ItemType.LOCK || def.getTriggers() == null) {
+                continue;
+            }
+            for (String key : def.getTriggers().getKeys(false)) {
+                if (def.getTriggers().get(key) instanceof List) {
+                    continue; // 引用形式：触发时按 id 查全局触发器
                 }
-                continue;
-            }
-            ConfigurationSection trigger = section.getConfigurationSection(id);
-            if (trigger == null) {
-                continue;
-            }
-            TriggerType type = TriggerType.fromString(trigger.getString("type"));
-            if (type == null) {
-                plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_INVALID_TYPE,
-                        trigger.getString("type"), id, "lock-item"));
-                continue;
-            }
-            List<Action> actions = actionManager.parseActions(trigger.getConfigurationSection("actions"));
-            if (!actions.isEmpty()) {
-                result.computeIfAbsent(type, k -> new ArrayList<>()).addAll(actions);
+                ConfigurationSection t = def.getTriggers().getConfigurationSection(key);
+                if (t == null) {
+                    continue;
+                }
+                TriggerType type = TriggerType.fromString(t.getString("type"));
+                if (type == null) {
+                    plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_INVALID_TYPE,
+                            t.getString("type"), key, def.getId()));
+                    continue;
+                }
+                String tempId = "def:" + def.getId() + ":" + key;
+                List<Action> actions = actionManager.parseActions(t.getConfigurationSection("actions"));
+                triggersById.put(tempId, new Trigger(tempId, type, actions));
             }
         }
-        return result;
+    }
+
+    /**
+     * 解析锁物品 PDC 中的触发器 id 列表。兼容新格式（triggers 为扁平 id 列表）与旧引用形式
+     * （triggers 为键值结构、值为 id 列表）；内嵌定义段（值为配置段）一律忽略——不信任物品 PDC 中的动作。
+     */
+    public List<String> parseTriggerIds(String data) {
+        if (data == null || data.isBlank()) {
+            return null;
+        }
+        List<String> ids = new ArrayList<>();
+        try {
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(new StringReader(data));
+            Object raw = config.get("triggers");
+            if (raw instanceof List<?> list) {
+                // 新格式：扁平 id 列表
+                for (Object o : list) {
+                    ids.add(String.valueOf(o));
+                }
+            } else if (raw instanceof ConfigurationSection section) {
+                // 旧引用形式：值为 id 列表
+                for (String key : section.getKeys(false)) {
+                    if (section.get(key) instanceof List<?> list) {
+                        for (Object o : list) {
+                            ids.add(String.valueOf(o));
+                        }
+                    }
+                    // 内嵌定义段（ConfigurationSection）忽略
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_PARSE_FAIL, e.getMessage()));
+        }
+        return ids.isEmpty() ? null : ids;
     }
 }

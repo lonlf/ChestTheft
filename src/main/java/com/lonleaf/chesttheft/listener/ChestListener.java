@@ -22,6 +22,7 @@ import com.lonleaf.chesttheft.trigger.TriggerType;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.configuration.file.YamlConfiguration;
 
 
 
@@ -82,6 +83,11 @@ public class ChestListener implements Listener {
         // 撬锁游戏中：任意左右键点击（方块 / 空气）即进行成功或失败判定，不再限定点击上锁箱子
         if (gameManager.isPlaying(player)) {
             handleGameClick(event, player);
+            return;
+        }
+
+        // 其他插件（如更早注册的 LOWEST 保护插件）已取消本次交互：本插件不处理，避免触发撬锁开始/配对/上锁
+        if (event.isCancelled()) {
             return;
         }
 
@@ -185,6 +191,16 @@ public class ChestListener implements Listener {
                 Messages.send(player, Messages.CHEST_LOCKED, Messages.CHEST_LOCKED_FORMAT);
             }
         } else if (item != null && itemManager.isType(item, ItemType.LOCK)) {
+            // 仅右键上锁（左键放行不处理，防误触锁定）
+            if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+                return;
+            }
+            // 仅允许上锁配置列表中的方块类型（lock.lockable-blocks）
+            if (!config.isLockable(block.getType())) {
+                event.setCancelled(true);
+                Messages.send(player, Messages.LOCK_NOT_LOCKABLE, Messages.LOCK_NOT_LOCKABLE_FORMAT);
+                return;
+            }
             // 上锁事件：外部保护（LWC/Bolt）集成在此阻止对受保护箱子上锁（关闭撬锁时）
             ChestLockEvent lockEvent = new ChestLockEvent(player, block, BlockLocation.from(block), item);
             Bukkit.getPluginManager().callEvent(lockEvent);
@@ -193,10 +209,12 @@ public class ChestListener implements Listener {
                 return;
             }
             int level = itemManager.getLevel(item);
-            // 锁物品定义配置了 triggers 时写入物品标签，随物品持久化到数据库
-            String lockTrigger = itemManager.serializeLockTriggers(item);
-            if (lockTrigger != null) {
-                itemManager.setLockTrigger(item, lockTrigger);
+            // 触发器只存 id 列表（引用形式 id / 内嵌定义临时 id），动作由服务端注册表解析，随物品持久化到数据库
+            List<String> triggerIds = itemManager.resolveLockTriggerIds(item);
+            if (triggerIds != null) {
+                YamlConfiguration tmp = new YamlConfiguration();
+                tmp.set("triggers", triggerIds);
+                itemManager.setLockTrigger(item, tmp.saveToString());
             }
             // 数据库只存本次消耗的单个锁物品（数量 1），避免卸锁返还时数量错乱；clone 防止后续消耗修改影响已存数据
             ItemStack storedLock = item.clone();
@@ -217,7 +235,7 @@ public class ChestListener implements Listener {
             Messages.send(player, Messages.LOCKED_IT, Messages.LOCKED_IT_FORMAT);
             BlockLocation location = BlockLocation.from(block);
             triggerManager.fire(TriggerType.LOCK, new TriggerContext(player, location));
-            triggerManager.fireForLock(lockTrigger, TriggerType.LOCK, new TriggerContext(player, location));
+            triggerManager.fireForLock(triggerIds, TriggerType.LOCK, new TriggerContext(player, location));
             // 锁等级未配置（撬锁时会降级回退）时恒输出日志便于排查配置问题；等级已配置时仅 debug 输出
             if (!lockConfigManager.isLevelConfigured(level) || config.isDebug()) {
                 gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_LOCK_APPLIED,
@@ -243,9 +261,9 @@ public class ChestListener implements Listener {
         if (lockItem == null) {
             return;
         }
-        String triggerData = itemManager.getLockTrigger(lockItem);
-        if (triggerData != null) {
-            triggerManager.fireForLock(triggerData, type, new TriggerContext(player, BlockLocation.from(block)));
+        List<String> triggerIds = triggerManager.parseTriggerIds(itemManager.getLockTrigger(lockItem));
+        if (triggerIds != null) {
+            triggerManager.fireForLock(triggerIds, type, new TriggerContext(player, BlockLocation.from(block)));
         }
     }
 
@@ -260,7 +278,10 @@ public class ChestListener implements Listener {
                                 BlockLocation location, ItemStack key) {
         if (itemManager.isPairedTo(key, location)) {
             if (isKeyMatched(key, location, block)) {
-                if (config.isKeyUnlockEnabled()) {
+                // 是否允许卸锁：功能开启且（本人为上锁者，或配置允许持钥匙非上锁者卸锁）
+                String locker = chestService.getLocker(block);
+                boolean isLocker = locker != null && locker.equals(player.getUniqueId().toString());
+                if (config.isKeyUnlockEnabled() && (isLocker || config.isKeyUnlockByHolder())) {
                     event.setCancelled(true);
                     // 卸锁需两次交互确认：第一次进入待确认，第二次（同一锁、未超时）才真正卸下
                     long now = System.currentTimeMillis();
@@ -274,7 +295,7 @@ public class ChestListener implements Listener {
                         Messages.send(player, Messages.UNLOCK_CONFIRM, Messages.UNLOCK_CONFIRM_FORMAT);
                     }
                 } else {
-                    // 卸锁功能关闭时放行，按普通点击打开箱子
+                    // 不可卸锁（功能关闭 / 非上锁者且配置关闭）：放行按普通点击打开箱子
                     ChestKeyOpenEvent keyOpenEvent = new ChestKeyOpenEvent(player, block, location);
                     Bukkit.getPluginManager().callEvent(keyOpenEvent);
                     if (keyOpenEvent.isCancelled()) {
@@ -298,7 +319,7 @@ public class ChestListener implements Listener {
             Messages.send(player, Messages.KEY_NOT_MATCHED, Messages.KEY_NOT_MATCHED_FORMAT);
             return;
         }
-        // 未配对钥匙：需启用配对功能；锁尚无配对钥匙时仅上锁者可配对，已有配对钥匙后任意持钥匙者可配对
+        // 未配对钥匙：需启用配对功能；配对仅允许上锁者（防止复制钥匙后卸锁偷锁）
         if (!config.isKeyPairEnabled()) {
             event.setCancelled(true);
             Messages.send(player, Messages.KEY_NOT_MATCHED, Messages.KEY_NOT_MATCHED_FORMAT);
@@ -307,7 +328,7 @@ public class ChestListener implements Listener {
         event.setCancelled(true);
         String locker = chestService.getLocker(block);
         boolean isLocker = locker != null && locker.equals(player.getUniqueId().toString());
-        if (!isLocker && !chestService.hasPairedKey(block)) {
+        if (!isLocker) {
             Messages.send(player, Messages.PAIR_NOT_LOCKER, Messages.PAIR_NOT_LOCKER_FORMAT);
             return;
         }
@@ -450,14 +471,16 @@ public class ChestListener implements Listener {
         }
     }
 
-    @EventHandler
+    /** MONITOR 最后执行：等 WorldGuard 等保护插件在 HIGHEST 取消后，仅在事件最终未被取消时才掉落锁物品。 */
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onBlockBreak(BlockBreakEvent event) {
         // 事件已被其他插件取消（如领地/权限插件拦截）：不得掉落锁物品或删除数据库记录
         if (event.isCancelled()) {
             return;
         }
         Block block = event.getBlock();
-        if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST) {
+        // 仅处理可上锁方块类型（内存判断，避免对所有被破坏方块做数据库查询）
+        if (!config.isLockable(block.getType())) {
             return;
         }
         // 双箱子：破坏未上锁的一侧时同样归一化到已上锁的一侧（双箱被破坏会整体掉落）
@@ -466,10 +489,11 @@ public class ChestListener implements Listener {
             return;
         }
         block = lockedBlock;
-        // 箱子被破坏时掉落锁物品并清除数据库记录
+        // 方块被破坏时掉落锁物品、清除数据库记录并撤销已授予的开箱授权（防授权残留）
         ItemStack lockItem = chestService.unlock(block);
         if (lockItem != null) {
             block.getWorld().dropItemNaturally(block.getLocation().add(0.5, 0.5, 0.5), lockItem);
+            gameManager.revokeAllAccess(BlockLocation.from(block));
         }
     }
 
@@ -503,7 +527,8 @@ public class ChestListener implements Listener {
         return null;
     }
 
-    @EventHandler
+    /** MONITOR 最后执行：保护插件取消爆炸后不再掉落锁物品（否则箱子没坏但锁没了）。 */
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onBlockExplode(BlockExplodeEvent event) {
         if (event.isCancelled()) {
             return;
@@ -511,7 +536,8 @@ public class ChestListener implements Listener {
         dropLockFromExplodedBlocks(event.blockList());
     }
 
-    @EventHandler
+    /** MONITOR 最后执行：保护插件取消爆炸后不再掉落锁物品。 */
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityExplode(EntityExplodeEvent event) {
         if (event.isCancelled()) {
             return;
@@ -519,10 +545,11 @@ public class ChestListener implements Listener {
         dropLockFromExplodedBlocks(event.blockList());
     }
 
-    /** 遍历爆炸破坏的方块列表，对上锁箱子掉落锁物品并清除数据库记录。 */
+    /** 遍历爆炸破坏的方块列表，对上锁的可上锁方块掉落锁物品并清除数据库记录。 */
     private void dropLockFromExplodedBlocks(List<Block> blocks) {
         for (Block block : blocks) {
-            if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST) {
+            // 仅处理可上锁方块类型（内存判断，避免对所有被破坏方块做数据库查询）
+            if (!config.isLockable(block.getType())) {
                 continue;
             }
             if (!chestService.isLocked(block)) {
@@ -551,8 +578,11 @@ public class ChestListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        if (gameManager.isPlaying(event.getPlayer())) {
-            gameManager.endGame(event.getPlayer());
+        Player player = event.getPlayer();
+        if (gameManager.isPlaying(player)) {
+            gameManager.endGame(player);
         }
+        // 清理待确认的卸锁目标，避免过期条目长期驻留内存
+        pendingUnlock.remove(player.getUniqueId());
     }
 }

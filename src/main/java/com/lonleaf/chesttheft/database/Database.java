@@ -39,8 +39,10 @@ public interface Database {
     /**
      * 记录一次临时授权（打开容器前授予，供插件崩溃后启动清理残留）。
      * 同一 (插件, 位置, 玩家) 只会存在一条有效记录：撤销后即删除，重新授权时覆盖写入。
+     *
+     * @return 是否记录成功；失败时调用方应中止授权，避免"已授权但无记录"导致残留权限无法清理
      */
-    void recordTempGrant(String pluginType, BlockLocation location, UUID playerUuid, String extra);
+    boolean recordTempGrant(String pluginType, BlockLocation location, UUID playerUuid, String extra);
 
     /** 返回指定插件类型的全部临时授权记录（启动清理用）。 */
     List<TempGrantRecord> getTempGrants(String pluginType);

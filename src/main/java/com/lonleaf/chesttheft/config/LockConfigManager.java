@@ -24,22 +24,8 @@ public class LockConfigManager {
         this.plugin = plugin;
         this.gameLevelDir = new File(plugin.getDataFolder(), "gamelevel");
         this.defaultConfig = defaultConfig;
-        migrateOldFolder();
         saveDefault();
         load();
-    }
-
-    /** 旧版本配置目录为 locklevel：已存在旧目录且新目录不存在时整体迁移，保留玩家自建等级配置。 */
-    private void migrateOldFolder() {
-        File oldDir = new File(plugin.getDataFolder(), "locklevel");
-        if (oldDir.isDirectory() && !gameLevelDir.exists()) {
-            if (oldDir.renameTo(gameLevelDir)) {
-                plugin.getLogger().info("[LockConfig] Migrated config folder locklevel/ to gamelevel/");
-            } else {
-                plugin.getLogger().warning("[LockConfig] Failed to migrate locklevel/ to gamelevel/, "
-                        + "locklevel/ configs will be ignored");
-            }
-        }
     }
 
     /** reload 时更新默认配置（等级 0 未在配置文件中定义时的兜底）。 */

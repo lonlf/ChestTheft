@@ -61,8 +61,9 @@ public class LwcProtectionListener implements Listener {
         }
     }
 
-    /** 注销监听（插件禁用时调用）：按插件移除模块。 */
+    /** 注销监听（插件禁用时调用）：先撤销在线玩家的临时授权，再按插件移除模块。 */
     public void unregister() {
+        revokeAllTemporary();
         if (lwc != null) {
             try {
                 ((com.griefcraft.lwc.LWC) lwc).getModuleLoader().removeModules(plugin);
@@ -72,6 +73,23 @@ public class LwcProtectionListener implements Listener {
             lwc = null;
         }
         temporaryGrants.clear();
+    }
+
+    /** 撤销全部在线玩家当前持有的临时 LWC 访问授权（禁用前调用，避免授权泄漏到下次启用）。 */
+    private void revokeAllTemporary() {
+        if (lwc == null || temporaryGrants.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<BlockLocation, Map<UUID, Boolean>> entry : new HashMap<>(temporaryGrants).entrySet()) {
+            for (Map.Entry<UUID, Boolean> playerEntry : new HashMap<>(entry.getValue()).entrySet()) {
+                if (Boolean.TRUE.equals(playerEntry.getValue())) {
+                    Player player = Bukkit.getPlayer(playerEntry.getKey());
+                    if (player != null && player.isOnline()) {
+                        revokeGrantByLocation(entry.getKey(), playerEntry.getKey());
+                    }
+                }
+            }
+        }
     }
 
     // ==================== 打开容器：临时授权 LWC 访问权限 ====================
@@ -101,23 +119,26 @@ public class LwcProtectionListener implements Listener {
         // 检查玩家是否已有 PLAYER 级访问权限
         if (protection.getAccess(playerName, com.griefcraft.model.Permission.Type.PLAYER)
                 != com.griefcraft.model.Permission.Access.PLAYER) {
-            try {
-                com.griefcraft.model.Permission tempPerm = new com.griefcraft.model.Permission(
-                        playerName, com.griefcraft.model.Permission.Type.PLAYER,
-                        com.griefcraft.model.Permission.Access.PLAYER);
-                tempPerm.setVolatile(true);
-                // 先落库（崩溃保险）：LWC 的 volatile 权限在插件禁用/服务器崩溃重启时会残留，
-                // 启动清理时按记录移除这些临时权限
-                database.recordTempGrant("lwc", location, uuid, "");
-                protection.addPermission(tempPerm);
-                protection.save();
-                granted = true;
-            } catch (Exception e) {
-                plugin.getLogger().fine("LWC temp grant failed: " + e.getMessage());
-                // 授权写入失败：删除记录避免留下无权限的无效记录
+            // 先落库（崩溃保险）：LWC 的 volatile 权限在插件禁用/服务器崩溃重启时会残留，
+            // 启动清理时按记录移除这些临时权限；落库失败则中止授权
+            if (!database.recordTempGrant("lwc", location, uuid, "")) {
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_GRANT_RECORD_FAIL, "lwc", location));
+            } else {
                 try {
-                    database.deleteTempGrant("lwc", location, uuid);
-                } catch (Exception ignored) {
+                    com.griefcraft.model.Permission tempPerm = new com.griefcraft.model.Permission(
+                            playerName, com.griefcraft.model.Permission.Type.PLAYER,
+                            com.griefcraft.model.Permission.Access.PLAYER);
+                    tempPerm.setVolatile(true);
+                    protection.addPermission(tempPerm);
+                    protection.save();
+                    granted = true;
+                } catch (Exception e) {
+                    plugin.getLogger().fine("LWC temp grant failed: " + e.getMessage());
+                    // 授权写入失败：删除记录避免留下无权限的无效记录
+                    try {
+                        database.deleteTempGrant("lwc", location, uuid);
+                    } catch (Exception ignored) {
+                    }
                 }
             }
         }

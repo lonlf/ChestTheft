@@ -48,6 +48,8 @@ public class SetItemCommand implements Command {
             return true;
         }
         tagger.tag(hand, def.getId());
+        // getItemInMainHand() 返回镜像副本，tag 只改副本 PDC；必须写回主手槽（触发 SET_SLOT 包刷新客户端）
+        player.getInventory().setItemInMainHand(hand);
         Messages.send(player, Messages.SETITEM_SUCCESS, Messages.SETITEM_SUCCESS_FORMAT, def.getId());
         return true;
     }

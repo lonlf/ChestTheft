@@ -2,10 +2,11 @@ package com.lonleaf.chesttheft.item;
 
 import com.lonleaf.chesttheft.model.BlockLocation;
 import org.bukkit.ChatColor;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 
 public class ItemManager {
@@ -107,8 +108,8 @@ public class ItemManager {
         return tagger.isPairedTo(item, location);
     }
 
-    /** 序列化锁物品定义中配置的触发器组为 YAML 字符串，未配置时返回 null。 */
-    public String serializeLockTriggers(ItemStack item) {
+    /** 解析锁物品定义中配置的触发器 id 列表：引用形式取原始 id，内嵌定义取临时 id（def:<物品ID>:<触发器键>），未配置时返回 null。 */
+    public List<String> resolveLockTriggerIds(ItemStack item) {
         String id = tagger.getId(item);
         if (id == null) {
             return null;
@@ -117,9 +118,15 @@ public class ItemManager {
         if (def == null || def.getTriggers() == null) {
             return null;
         }
-        YamlConfiguration tmp = new YamlConfiguration();
-        tmp.set("triggers", def.getTriggers());
-        return tmp.saveToString();
+        List<String> ids = new ArrayList<>();
+        for (String key : def.getTriggers().getKeys(false)) {
+            if (def.getTriggers().get(key) instanceof List<?> list) {
+                list.forEach(raw -> ids.add(String.valueOf(raw)));
+            } else {
+                ids.add("def:" + id + ":" + key);
+            }
+        }
+        return ids;
     }
 
     /** 写入锁物品的触发器配置标签。 */

@@ -51,7 +51,7 @@ public class TumblerBarSession extends MiniGameSession {
 
     public TumblerBarSession(MiniGameContext context) {
         super(context);
-        this.barConfig = TumblerBarConfig.from(context.getConfig().getSection());
+        this.barConfig = TumblerBarConfig.from(context.getConfig().getSection(), gameManager.getPlugin().getLogger());
         this.stateA = barConfig.getInitialA();
         this.wReleased = true;
     }
@@ -186,9 +186,8 @@ public class TumblerBarSession extends MiniGameSession {
         attempts++;
         if (attempts >= barConfig.getMaxAttempts()) {
             // 尝试次数用尽：撬锁失败
-            gameManager.getPlugin().getLogger().info(
-                    "[TumblerBar] attempts exhausted (" + attempts + "/" + barConfig.getMaxAttempts()
-                            + "), failGame() -> " + player.getName());
+            gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_TUMBLER_ATTEMPTS_EXHAUSTED,
+                    attempts, barConfig.getMaxAttempts(), player.getName()));
             failGame();
             return;
         }

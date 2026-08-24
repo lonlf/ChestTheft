@@ -49,9 +49,12 @@ public class ReloadCommand implements Command {
         BitmapCalculator.init(config.getFontConfig());
         itemConfigManager.reload();
         gameManager.updateConfig(config.getGameConfig());
-        lockConfigManager.load();
+        // 必须先更新默认配置再加载等级配置：load() 内 mergeWithDefault 使用 defaultConfig 填充未定义键
         lockConfigManager.updateDefaultConfig(config.getGameConfig());
+        lockConfigManager.load();
         triggerManager.load();
+        // load() 清空了触发器注册表，须重新注册物品定义中的内嵌触发器（临时 id）
+        triggerManager.syncItemTriggers(itemConfigManager.getDefinitions());
         lootChestManager.reloadConfig();
         Messages.reload(config.getLanguage());
         Messages.applyFormats(config.getMessageFormats());

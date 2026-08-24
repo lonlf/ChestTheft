@@ -17,11 +17,16 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -99,6 +104,8 @@ public class GameManager implements Listener {
                 Messages.send(player, Messages.COOLDOWN, Messages.COOLDOWN_FORMAT, remaining);
                 return false;
             }
+            // 冷却已过期：顺手清理，避免过期条目长期驻留内存
+            cooldowns.remove(uuid);
         }
 
         MiniGame miniGame = miniGames.get(config.getGameType());
@@ -120,6 +127,19 @@ public class GameManager implements Listener {
             session.stop();
             cooldowns.put(player.getUniqueId(), System.currentTimeMillis());
         }
+    }
+
+    /** 玩家退出：清理其会话、冷却与开箱授权缓存，避免内存泄漏（不进入冷却，无消息提示）。 */
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        MiniGameSession session = activeGames.remove(uuid);
+        if (session != null) {
+            session.stop();
+        }
+        cooldowns.remove(uuid);
+        grantedAccess.remove(uuid);
     }
 
     /** 会话主动失败结束（如节奏条光标越过判定点未命中）：发送失败消息、触发失败触发器并结束会话。 */
@@ -146,7 +166,8 @@ public class GameManager implements Listener {
         } else {
             Block target = session.getTarget();
             if (target != null && target.getType() == Material.CHEST) {
-                grantAccess(player, BlockLocation.from(target));
+                // 使用本局配置（按锁等级选取）：等级配置的 access-duration 才能生效
+                grantAccess(player, BlockLocation.from(target), session.getConfig());
             }
         }
         endGame(player);
@@ -156,9 +177,15 @@ public class GameManager implements Listener {
         return activeGames.containsKey(player.getUniqueId());
     }
 
-    /** 授予玩家对指定箱子的开箱授权：access-duration > 0 时限时多次；= 0 时仅一次打开机会。 */
+    /** 授予玩家对指定箱子的开箱授权（使用默认配置）：access-duration > 0 时限时多次；= 0 时仅一次打开机会。 */
     public void grantAccess(Player player, BlockLocation location) {
-        int duration = defaultGameConfig.getAccessDurationSeconds();
+        grantAccess(player, location, null);
+    }
+
+    /** 授予玩家对指定箱子的开箱授权（使用本局配置，null 回退默认配置）：access-duration > 0 时限时多次；= 0 时仅一次打开机会。 */
+    public void grantAccess(Player player, BlockLocation location, GameConfig gameConfig) {
+        GameConfig cfg = gameConfig != null ? gameConfig : defaultGameConfig;
+        int duration = cfg.getAccessDurationSeconds();
         long windowMs;
         boolean once;
         if (duration > 0) {
@@ -166,7 +193,7 @@ public class GameManager implements Listener {
             once = false;
         } else {
             // 一次性授权：仅一次打开机会，在 access-once-window 内有效
-            windowMs = defaultGameConfig.getAccessOnceWindowSeconds() * 1000L;
+            windowMs = cfg.getAccessOnceWindowSeconds() * 1000L;
             once = true;
         }
         grantedAccess.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>())
@@ -252,6 +279,31 @@ public class GameManager implements Listener {
         endGame(player);
     }
 
+    /** 撬锁中死亡：结束会话（受击中断已按配置处理，死亡再兜底一次，endGame 幂等）。 */
+    @EventHandler
+    public void onDeath(PlayerDeathEvent event) {
+        endIfPlaying(event.getEntity());
+    }
+
+    /** 撬锁中传送（/tp、传送门等不触发 PlayerMoveEvent）：结束会话，清理坐骑实体。 */
+    @EventHandler
+    public void onTeleport(PlayerTeleportEvent event) {
+        endIfPlaying(event.getPlayer());
+    }
+
+    /** 撬锁中换世界：结束会话，清理坐骑实体。 */
+    @EventHandler
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        endIfPlaying(event.getPlayer());
+    }
+
+    private void endIfPlaying(Player player) {
+        MiniGameSession session = activeGames.get(player.getUniqueId());
+        if (session != null) {
+            interrupt(session, player);
+        }
+    }
+
     /** 触发目标锁物品自带的触发器；锁未配置时不处理。 */
     private void fireLockTrigger(Block target, TriggerType type, Player player) {
         if (target == null) {
@@ -261,9 +313,9 @@ public class GameManager implements Listener {
         if (lockItem == null) {
             return;
         }
-        String triggerData = itemManager.getLockTrigger(lockItem);
-        if (triggerData != null) {
-            triggerManager.fireForLock(triggerData, type,
+        List<String> triggerIds = triggerManager.parseTriggerIds(itemManager.getLockTrigger(lockItem));
+        if (triggerIds != null) {
+            triggerManager.fireForLock(triggerIds, type,
                     new TriggerContext(player, BlockLocation.from(target)));
         }
     }

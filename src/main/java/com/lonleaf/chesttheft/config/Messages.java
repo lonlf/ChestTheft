@@ -57,6 +57,7 @@ public class Messages {
     public static volatile String RULE_TUMBLER;
     public static volatile String LOCKED_IT;
     public static volatile String CHEST_LOCKED;
+    public static volatile String LOCK_NOT_LOCKABLE;
     public static volatile String GAME_TIMEOUT;
     public static volatile String COOLDOWN;
     public static volatile String NO_PERMISSION;
@@ -108,6 +109,7 @@ public class Messages {
     public static volatile String PICK_INTERRUPTED_FORMAT;
     public static volatile String LOCKED_IT_FORMAT;
     public static volatile String CHEST_LOCKED_FORMAT;
+    public static volatile String LOCK_NOT_LOCKABLE_FORMAT;
     public static volatile String GAME_TIMEOUT_FORMAT;
     public static volatile String COOLDOWN_FORMAT;
     public static volatile String NO_PERMISSION_FORMAT;
@@ -150,6 +152,7 @@ public class Messages {
     public static volatile String LOG_DB_CREATE_TABLE_FAIL;
     public static volatile String LOG_DB_QUERY_STATE_FAIL;
     public static volatile String LOG_DB_LOCK_DUP;
+    public static volatile String LOG_DB_LOCK_FAIL;
     public static volatile String LOG_DB_LOCKER_FAIL;
     public static volatile String LOG_DB_UNLOCK_FAIL;
     public static volatile String LOG_DB_ITEM_FAIL;
@@ -171,6 +174,10 @@ public class Messages {
     public static volatile String LOG_PICKLOCK_START_DEBUG;
     public static volatile String LOG_TRIGGER_INVALID_TYPE;
     public static volatile String LOG_TRIGGER_REF_MISSING;
+    public static volatile String LOG_TRIGGER_PARSE_FAIL;
+    public static volatile String LOG_CONFIG_LOCKABLE_INVALID;
+    public static volatile String LOG_TUMBLER_BFINAL_INVALID;
+    public static volatile String LOG_TUMBLER_ATTEMPTS_EXHAUSTED;
     public static volatile String LOG_ACTION_INVALID_TYPE;
     public static volatile String LOG_LOOT_CHEST_DUPLICATE;
     public static volatile String LOG_LOOT_CHEST_INVALID_MATERIAL;
@@ -181,6 +188,7 @@ public class Messages {
     public static volatile String LOG_STALE_FOUND;
     public static volatile String LOG_STALE_CLEANED;
     public static volatile String LOG_STALE_CLEAN_FAIL;
+    public static volatile String LOG_TEMP_GRANT_RECORD_FAIL;
     public static volatile String LOG_PROTECTION_CALLBACK_FAIL;
     public static volatile String LOG_LOOT_DISPLAY_GLOBAL_ID_FAIL;
     public static volatile String LOG_LOOT_OPEN_PARTICLE_INVALID;
@@ -271,6 +279,7 @@ public class Messages {
         PICK_INTERRUPTED_FORMAT = formats.getOrDefault("pickingInterrupt", "message");
         LOCKED_IT_FORMAT = formats.getOrDefault("lockSuccess", "title");
         CHEST_LOCKED_FORMAT = formats.getOrDefault("chestLocked", "message");
+        LOCK_NOT_LOCKABLE_FORMAT = formats.getOrDefault("lockNotLockable", "message");
         GAME_TIMEOUT_FORMAT = formats.getOrDefault("pickingTimeout", "message");
         COOLDOWN_FORMAT = formats.getOrDefault("pickingCooldown", "message");
         NO_PERMISSION_FORMAT = formats.getOrDefault("noPermission", "message");
@@ -494,6 +503,7 @@ public class Messages {
         RULE_TUMBLER = messages.getOrDefault("ruleTumbler", "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!");
         LOCKED_IT = messages.getOrDefault("lockedIt", "&aLocked successfully");
         CHEST_LOCKED = messages.getOrDefault("chestLocked", "&cThis chest is locked!");
+        LOCK_NOT_LOCKABLE = messages.getOrDefault("lockNotLockable", "&cThis block cannot be locked!");
         GAME_TIMEOUT = messages.getOrDefault("gameTimeout", "&cPicklock timed out!");
         COOLDOWN = messages.getOrDefault("cooldown", "&cToo fast! Please wait {0} seconds");
         NO_PERMISSION = messages.getOrDefault("noPermission", "&cYou do not have permission to use this command!");
@@ -566,6 +576,10 @@ public class Messages {
         LOG_PICKLOCK_START_DEBUG = messages.getOrDefault("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
         LOG_TRIGGER_INVALID_TYPE = messages.getOrDefault("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
         LOG_TRIGGER_REF_MISSING = messages.getOrDefault("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
+        LOG_TRIGGER_PARSE_FAIL = messages.getOrDefault("logTriggerParseFail", "Failed to parse lock trigger data: {0}");
+        LOG_CONFIG_LOCKABLE_INVALID = messages.getOrDefault("logConfigLockableInvalid", "Invalid lockable block type '{0}' in lock.lockable-blocks, skipped");
+        LOG_TUMBLER_BFINAL_INVALID = messages.getOrDefault("logTumblerBFinalInvalid", "tumbler-bar b-final must equal b-states-1 ({0}) to be winnable, forcibly clamped");
+        LOG_TUMBLER_ATTEMPTS_EXHAUSTED = messages.getOrDefault("logTumblerAttemptsExhausted", "TumblerBar: attempts exhausted ({0}/{1}), failing game for {2}");
         LOG_ACTION_INVALID_TYPE = messages.getOrDefault("logActionInvalidType", "Invalid action type '{0}'");
         LOG_LOOT_CHEST_DUPLICATE = messages.getOrDefault("logLootChestDuplicate", "Duplicate loot chest profile '{0}' overridden by definition in {1}");
         LOG_LOOT_CHEST_INVALID_MATERIAL = messages.getOrDefault("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
@@ -576,6 +590,7 @@ public class Messages {
         LOG_STALE_FOUND = messages.getOrDefault("logStaleFound", "Found {0} stale temp grant records ({1}), cleaning up...");
         LOG_STALE_CLEANED = messages.getOrDefault("logStaleCleaned", "Cleaned stale temp grant: {0} @ {1}");
         LOG_STALE_CLEAN_FAIL = messages.getOrDefault("logStaleCleanFail", "Failed to clean stale grant (record kept for retry): {0}");
+        LOG_TEMP_GRANT_RECORD_FAIL = messages.getOrDefault("logTempGrantRecordFail", "Failed to record temp grant ({0} @ {1}), authorization aborted");
         LOG_PROTECTION_CALLBACK_FAIL = messages.getOrDefault("logProtectionCallbackFail", "{0} protection callback failed: {1}");
         LOG_LOOT_DISPLAY_GLOBAL_ID_FAIL = messages.getOrDefault("logLootDisplayGlobalIdFail", "Failed to resolve block state globalId (BlockDisplay will be invisible): material={0} type={1}");
         LOG_LOOT_OPEN_PARTICLE_INVALID = messages.getOrDefault("logLootOpenParticleInvalid", "Loot chest open particle type '{0}' is not supported by PacketEvents, ignored (use CLOUD/FLAME/SMOKE/END_ROD etc.)");
@@ -617,6 +632,7 @@ public class Messages {
             map.put("ruleRhythmRide", "&a撬锁开始！按 A/D 键移动游标，依次在未完成判定点处点击，全部命中即可开锁！");
             map.put("lockedIt", "&a上锁成功");
             map.put("chestLocked", "&c这个箱子已上锁！");
+            map.put("lockNotLockable", "&c这个方块不能上锁！");
             map.put("gameTimeout", "&c撬锁超时！");
             map.put("cooldown", "&c操作太频繁，请等待 {0} 秒");
             map.put("noPermission", "&c你没有权限使用此命令！");
@@ -681,6 +697,10 @@ public class Messages {
             map.put("logLockApplied", "玩家 {0} 已上锁 {1}（等级 {2}）");
             map.put("logPicklockStartDebug", "玩家 {0} 开始撬锁 {1}（锁等级 {2}，撬锁器等级 {3}，生效等级 {4}）");
             map.put("logTriggerInvalidType", "无效的触发器类型 '{0}'（trigger {1} in {2}）");
+            map.put("logTriggerRefMissing", "引用的触发器 '{0}' 不存在（trigger {1} in lock-item）");
+            map.put("logTriggerParseFail", "解析锁物品触发器数据失败: {0}");
+            map.put("logConfigLockableInvalid", "lock.lockable-blocks 中存在无效的方块类型 '{0}'，已跳过");
+            map.put("logTumblerBFinalInvalid", "tumbler-bar b-final 必须等于 b-states-1（{0}）才能成功，已强制钳制");
             map.put("logActionInvalidType", "无效的动作类型 '{0}'");
             map.put("logLootChestDuplicate", "重复的战利品箱档案 '{0}'，被 {1} 中的定义覆盖");
             map.put("logLootChestInvalidMaterial", "档案 {0} 的展示材质无效: {1}，使用默认值");
@@ -715,6 +735,7 @@ public class Messages {
             map.put("ruleTumbler", "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!");
             map.put("lockedIt", "&aLocked successfully");
             map.put("chestLocked", "&cThis chest is locked!");
+            map.put("lockNotLockable", "&cThis block cannot be locked!");
             map.put("gameTimeout", "&cPicklock timed out!");
             map.put("cooldown", "&cToo fast! Please wait {0} seconds");
             map.put("noPermission", "&cYou do not have permission to use this command!");
@@ -781,6 +802,10 @@ public class Messages {
             map.put("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
             map.put("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
             map.put("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
+            map.put("logTriggerParseFail", "Failed to parse lock trigger data: {0}");
+            map.put("logConfigLockableInvalid", "Invalid lockable block type '{0}' in lock.lockable-blocks, skipped");
+            map.put("logTumblerBFinalInvalid", "tumbler-bar b-final must equal b-states-1 ({0}) to be winnable, forcibly clamped");
+            map.put("logTumblerAttemptsExhausted", "TumblerBar: attempts exhausted ({0}/{1}), failing game for {2}");
             map.put("logActionInvalidType", "Invalid action type '{0}'");
             map.put("logLootChestDuplicate", "Duplicate loot chest profile '{0}' overridden by definition in {1}");
             map.put("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
@@ -791,6 +816,7 @@ public class Messages {
             map.put("logStaleFound", "Found {0} stale temp grant records ({1}), cleaning up...");
             map.put("logStaleCleaned", "Cleaned stale temp grant: {0} @ {1}");
             map.put("logStaleCleanFail", "Failed to clean stale grant (record kept for retry): {0}");
+            map.put("logTempGrantRecordFail", "Failed to record temp grant ({0} @ {1}), authorization aborted");
             map.put("logProtectionCallbackFail", "{0} protection callback failed: {1}");
             map.put("logLootDisplayGlobalIdFail", "Failed to resolve block state globalId (BlockDisplay will be invisible): material={0} type={1}");
             map.put("logLootOpenParticleInvalid", "Loot chest open particle type '{0}' is not supported by PacketEvents, ignored (use CLOUD/FLAME/SMOKE/END_ROD etc.)");

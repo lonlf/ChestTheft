@@ -8,8 +8,7 @@ description: This is a chest theft and lock picking plugin for Minecraft (Spigot
 website: https://github.com/lonlf
 commands:
   chesttheft:
-    description: ChestTheft 主命令
-    usage: /chesttheft give <玩家> <物品ID> [数量] | /chesttheft setitem <物品ID> | /chesttheft check | /chesttheft reload
+    description: ChestTheft main command.
     aliases: [ ct ]
 permissions:
   chesttheft.admin:
@@ -17,6 +16,9 @@ permissions:
   chesttheft.protectionOwner:
     description: Treat the holder as the owner of any protected chest (overrides owner checks)
     default: op
+  chesttheft.check:
+    description: View held item information (/ct check)
+    default: false
   chesttheft.use:
     description: allow to pickup
     default: true

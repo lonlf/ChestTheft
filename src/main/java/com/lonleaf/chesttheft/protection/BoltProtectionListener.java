@@ -63,8 +63,25 @@ public class BoltProtectionListener implements Listener {
         }
     }
 
-    /** Bolt 无取消订阅接口，无需注销；插件禁用时由回调内的插件启用检查兜底。 */
+    /**
+     * 插件禁用时：撤销在线玩家持有的全部临时授权（Bolt access 为持久化写入，禁用/崩溃后不会自动消失），
+     * 并删除对应 temp_grants 记录；Bolt 无取消订阅接口，无需注销监听器。
+     */
     public void unregister() {
+        if (!temporaryAccesses.isEmpty() && Bukkit.getPluginManager().getPlugin("Bolt") != null) {
+            BoltAPI bolt = Bukkit.getServicesManager().load(BoltAPI.class);
+            if (bolt != null) {
+                for (Map.Entry<BlockLocation, Map<UUID, TempGrant>> entry : new HashMap<>(temporaryAccesses).entrySet()) {
+                    for (Map.Entry<UUID, TempGrant> playerEntry : new HashMap<>(entry.getValue()).entrySet()) {
+                        Player player = Bukkit.getPlayer(playerEntry.getKey());
+                        if (player != null && player.isOnline()) {
+                            revokeGrant(bolt, entry.getKey(), playerEntry.getKey(), playerEntry.getValue());
+                        }
+                    }
+                }
+            }
+        }
+        temporaryAccesses.clear();
     }
 
     // ==================== 打开容器：临时授权 + 抑制提示 ====================
@@ -100,23 +117,22 @@ public class BoltProtectionListener implements Listener {
             String key = "player:" + uuid;
             original = access.get(key);
             // 先落库（崩溃保险）：记录授权前原值，启动清理时据此恢复；Bolt access 为持久化写入，
-            // 崩溃后残留的临时授权会在下次启动按记录移除/恢复
-            try {
-                database.recordTempGrant("bolt", location, uuid, original == null ? "" : original);
-            } catch (Exception e) {
-                plugin.getLogger().fine("记录临时授权失败: " + e.getMessage());
-            }
-            try {
-                access.put(key, "normal");
-                bolt.saveProtection(protection);
-                granted = true;
-            } catch (Exception e) {
-                // 写入失败：删除记录避免留下无权限的无效记录
-                plugin.getLogger().fine("Bolt temp grant failed: " + e.getMessage());
+            // 崩溃后残留的临时授权会在下次启动按记录移除/恢复；落库失败则中止授权
+            if (database.recordTempGrant("bolt", location, uuid, original == null ? "" : original)) {
                 try {
-                    database.deleteTempGrant("bolt", location, uuid);
-                } catch (Exception ignored) {
+                    access.put(key, "normal");
+                    bolt.saveProtection(protection);
+                    granted = true;
+                } catch (Exception e) {
+                    // 写入失败：删除记录避免留下无权限的无效记录
+                    plugin.getLogger().fine("Bolt temp grant failed: " + e.getMessage());
+                    try {
+                        database.deleteTempGrant("bolt", location, uuid);
+                    } catch (Exception ignored) {
+                    }
                 }
+            } else {
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_GRANT_RECORD_FAIL, "bolt", location));
             }
         }
         Map<UUID, TempGrant> grants = temporaryAccesses.computeIfAbsent(location, k -> new HashMap<>());

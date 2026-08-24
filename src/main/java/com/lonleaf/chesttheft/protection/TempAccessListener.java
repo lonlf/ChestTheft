@@ -95,11 +95,10 @@ public abstract class TempAccessListener implements Listener {
         if (grant == null) {
             return;
         }
-        // 先落库、后写入权限：任意时刻断电都有记录可供启动清理（崩溃保险）
-        try {
-            database.recordTempGrant(pluginType(), location, uuid, serializeGrant(grant));
-        } catch (Exception e) {
-            plugin.getLogger().fine("记录临时授权失败: " + e.getMessage());
+        // 先落库、后写入权限：任意时刻断电都有记录可供启动清理（崩溃保险）；落库失败则中止授权
+        if (!database.recordTempGrant(pluginType(), location, uuid, serializeGrant(grant))) {
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_GRANT_RECORD_FAIL, pluginType(), location));
+            return;
         }
         try {
             apply(block, player, grant);

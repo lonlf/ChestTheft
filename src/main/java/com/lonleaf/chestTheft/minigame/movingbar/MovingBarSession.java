@@ -37,7 +37,9 @@ public class MovingBarSession extends MiniGameSession {
         super(context);
         this.barConfig = MovingBarConfig.from(context.getConfig().getSection());
         this.unhitLength = barConfig.getUnhitLength();
-        this.unhitStart = ThreadLocalRandom.current().nextInt(3, barConfig.getBarLength() - unhitLength - 2);
+        // 条太短（bar-length - unhit-length - 2 ≤ 3）时 nextInt(3, upper) 会因上界不足抛异常：固定取 3，判定区紧贴左端
+        int upper = barConfig.getBarLength() - unhitLength - 2;
+        this.unhitStart = upper > 3 ? ThreadLocalRandom.current().nextInt(3, upper) : 3;
     }
 
     @Override

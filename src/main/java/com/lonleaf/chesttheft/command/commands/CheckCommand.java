@@ -27,6 +27,11 @@ public class CheckCommand implements Command {
             Messages.send(sender, Messages.PLAYER_ONLY, Messages.PLAYER_ONLY_FORMAT);
             return true;
         }
+        // 独立权限节点 chesttheft.check（默认不授予），与 admin 命令区分
+        if (!player.hasPermission("chesttheft.check")) {
+            Messages.send(player, Messages.NO_PERMISSION, Messages.NO_PERMISSION_FORMAT);
+            return true;
+        }
         ItemStack hand = player.getInventory().getItemInMainHand();
         if (hand == null || hand.getType().isAir()) {
             Messages.send(player, Messages.SETITEM_NO_ITEM, Messages.SETITEM_NO_ITEM_FORMAT);

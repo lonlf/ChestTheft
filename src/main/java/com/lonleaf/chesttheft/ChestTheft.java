@@ -73,7 +73,7 @@ public final class ChestTheft extends JavaPlugin {
                 + PacketEvents.getAPI().getServerManager().getVersion());
         getLogger().info("[ChestTheft][DEBUG] AbstractDisplayMeta.MAX_OFFSET = " + AbstractDisplayMeta.MAX_OFFSET
                 + " (22=旧布局/<1.20.2, 23=新布局/>=1.20.2), BlockDisplayMeta.OFFSET = " + BlockDisplayMeta.OFFSET);
-        // 配置管理器：加载全部配置（含首启语言检测写回、config-version 自动升级）
+        // 配置管理器：加载全部配置（含首启语言检测写回）
         PluginConfig config = new PluginConfig(this);
         // 应用 config.yml 中 message-format 小节的消息显示方式配置
         Messages.applyFormats(config.getMessageFormats());
@@ -97,6 +97,8 @@ public final class ChestTheft extends JavaPlugin {
         lockConfigManager = new LockConfigManager(this, config.getGameConfig());
         // 触发器系统：加载 trigger 文件夹配置，在撬锁成功/失败/取消/打断、上锁、钥匙开锁/配对时执行配置动作
         TriggerManager triggerManager = new TriggerManager(this);
+        // 注册物品定义中的内嵌触发器为临时 id（def:<物品ID>:<触发器键>），动作只进内存注册表
+        triggerManager.syncItemTriggers(itemConfigManager.getDefinitions());
         gameManager = new GameManager(this, config.getGameConfig(), triggerManager, chestService, itemManager);
 
         getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config, lockConfigManager, triggerManager), this);
