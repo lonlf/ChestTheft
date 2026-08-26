@@ -1,5 +1,6 @@
 package com.lonleaf.chesttheft.protection;
 
+import com.lonleaf.chesttheft.database.Database;
 import com.palmergames.bukkit.towny.Towny;
 import com.palmergames.bukkit.towny.TownyAPI;
 import com.palmergames.bukkit.towny.event.NewTownEvent;
@@ -12,7 +13,6 @@ import com.palmergames.bukkit.towny.object.TownBlock;
 import com.palmergames.bukkit.towny.object.TownyPermission;
 import com.palmergames.bukkit.towny.object.WorldCoord;
 import com.palmergames.bukkit.towny.utils.PermissionGUIUtil;
-import com.lonleaf.chesttheft.database.Database;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
@@ -31,24 +31,43 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * Towny 城镇保护集成（软依赖）：城镇创建/地块声明自动卸锁 + 打开前临时覆盖地块 SWITCH 权限。
- * 玩家原权限覆盖入库，崩溃后启动清理恢复。
+ * Towny 城镇保护适配器（软依赖）：城镇创建/地块声明自动卸锁 + 打开前事件内临时覆盖地块 SWITCH 权限。
+ * 城镇地块覆盖为持久化写入（Towny 数据），授权前落库（记录原覆盖），崩溃后启动清理恢复；
+ * 野地权限为纯内存附件（重启即清），不落库。
  */
-public class TownyProtectionListener extends TempAccessListener implements Listener {
+public class TownyAdapter extends TempAccessAdapter implements Listener {
 
-    /** 保护创建回调（自动卸锁逻辑，由 ProtectionListener 提供）。 */
-    private final Consumer<Block> protectionCreatedHandler;
     /** 是否已注册监听。 */
     private boolean registered = false;
 
-    public TownyProtectionListener(Plugin plugin, Consumer<Block> protectionCreatedHandler, Database database) {
+    public TownyAdapter(Plugin plugin, Database database) {
         super(plugin, database);
-        this.protectionCreatedHandler = protectionCreatedHandler;
     }
 
     @Override
-    protected String pluginType() {
+    public String pluginType() {
         return "towny";
+    }
+
+    @Override
+    public boolean isActive() {
+        return Bukkit.getPluginManager().getPlugin("Towny") != null;
+    }
+
+    @Override
+    public boolean isProtected(Block block) {
+        return ProtectionUtil.isTownyProtected(block);
+    }
+
+    @Override
+    public UUID getOwnerUUID(Block block) {
+        return ProtectionUtil.townyOwner(block);
+    }
+
+    /** 城镇地块覆盖为持久化写入需要落库（崩溃清理）；野地为内存附件（重启即清）不落库。 */
+    @Override
+    protected boolean persistGrant(TempGrant grant) {
+        return grant instanceof TownyGrant townyGrant && !townyGrant.wild;
     }
 
     @Override
@@ -69,7 +88,7 @@ public class TownyProtectionListener extends TempAccessListener implements Liste
 
     @Override
     protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
-        if (Bukkit.getPluginManager().getPlugin("Towny") == null) {
+        if (!isActive()) {
             return;
         }
         TownyAPI towny = TownyAPI.getInstance();
@@ -107,14 +126,16 @@ public class TownyProtectionListener extends TempAccessListener implements Liste
     }
 
     /** 注册 Towny 事件监听（仅 Towny 插件存在时）。 */
-    public void register() {
-        if (Bukkit.getPluginManager().getPlugin("Towny") != null && !registered) {
+    @Override
+    public void register(Consumer<Block> protectionCreatedHandler) {
+        super.register(protectionCreatedHandler);
+        if (isActive() && !registered) {
             Bukkit.getPluginManager().registerEvents(this, plugin);
             registered = true;
         }
     }
 
-    /** 注销监听（插件禁用时由 Bukkit 自动注销，此处标记状态并清理临时授权）。 */
+    @Override
     public void unregister() {
         registered = false;
         cleanup();
@@ -124,7 +145,7 @@ public class TownyProtectionListener extends TempAccessListener implements Liste
 
     @Override
     protected TempGrant prepare(Block block, Player player) {
-        if (Bukkit.getPluginManager().getPlugin("Towny") == null) {
+        if (!isActive()) {
             return null;
         }
         TownyAPI towny = TownyAPI.getInstance();
@@ -193,7 +214,7 @@ public class TownyProtectionListener extends TempAccessListener implements Liste
     @Override
     protected void revoke(Block block, Player player, TempGrant grant) {
         TownyGrant townyGrant = (TownyGrant) grant;
-        if (!townyGrant.granted || Bukkit.getPluginManager().getPlugin("Towny") == null) {
+        if (!townyGrant.granted || !isActive()) {
             return;
         }
         if (townyGrant.wild) {
@@ -230,7 +251,7 @@ public class TownyProtectionListener extends TempAccessListener implements Liste
      * （野地/城镇首次交互未授权时缓存的 false，会持续拦截后续授权成功的打开）。
      */
     private void resetTownyCache(Player player, Block block) {
-        if (Bukkit.getPluginManager().getPlugin("Towny") == null) {
+        if (!isActive()) {
             return;
         }
         try {

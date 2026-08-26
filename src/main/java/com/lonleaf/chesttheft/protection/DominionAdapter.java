@@ -23,18 +23,21 @@ import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.Field;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
- * Dominion 领地保护集成（软依赖）：领地创建自动卸锁 + 打开前临时授予箱子 flag（版本自适应）。
- * 临时授权记录入库，崩溃后启动清理恢复。
+ * Dominion 领地保护适配器（软依赖）：领地创建自动卸锁 + 打开前事件内临时授予箱子 flag（版本自适应）。
+ * 成员/flag 为持久化写入（Dominion 库），授权前落库（记录原成员状态），崩溃后启动清理恢复。
  */
-public class DominionProtectionListener extends TempAccessListener implements Listener {
+public class DominionAdapter extends TempAccessAdapter implements Listener {
 
-    /** 保护创建回调（自动卸锁逻辑，由 ProtectionListener 提供）。 */
-    private final Consumer<Block> protectionCreatedHandler;
     /** 是否已注册监听。 */
     private boolean registered = false;
+
+    public DominionAdapter(Plugin plugin, Database database) {
+        super(plugin, database);
+    }
 
     /** 箱子开关 flag：4.9.4+ 为 CHEST，旧版仅 CONTAINER；反射探测，授予的 flag 必须与检查一致。 */
     private static PriFlag chestFlag() {
@@ -46,14 +49,24 @@ public class DominionProtectionListener extends TempAccessListener implements Li
         }
     }
 
-    public DominionProtectionListener(Plugin plugin, Consumer<Block> protectionCreatedHandler, Database database) {
-        super(plugin, database);
-        this.protectionCreatedHandler = protectionCreatedHandler;
+    @Override
+    public String pluginType() {
+        return "dominion";
     }
 
     @Override
-    protected String pluginType() {
-        return "dominion";
+    public boolean isActive() {
+        return Bukkit.getPluginManager().getPlugin("Dominion") != null;
+    }
+
+    @Override
+    public boolean isProtected(Block block) {
+        return ProtectionUtil.isDominionProtected(block);
+    }
+
+    @Override
+    public UUID getOwnerUUID(Block block) {
+        return ProtectionUtil.dominionOwner(block);
     }
 
     @Override
@@ -63,7 +76,7 @@ public class DominionProtectionListener extends TempAccessListener implements Li
 
     @Override
     protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
-        if (Bukkit.getPluginManager().getPlugin("Dominion") == null) {
+        if (!isActive()) {
             return;
         }
         DominionAPI api = DominionAPI.getInstance();
@@ -90,14 +103,16 @@ public class DominionProtectionListener extends TempAccessListener implements Li
     }
 
     /** 注册 Dominion 领地创建事件监听（仅 Dominion 插件存在时）。 */
-    public void register() {
-        if (Bukkit.getPluginManager().getPlugin("Dominion") != null && !registered) {
+    @Override
+    public void register(Consumer<Block> protectionCreatedHandler) {
+        super.register(protectionCreatedHandler);
+        if (isActive() && !registered) {
             Bukkit.getPluginManager().registerEvents(this, plugin);
             registered = true;
         }
     }
 
-    /** 注销监听（插件禁用时由 Bukkit 自动注销，此处标记状态并清理临时授权）。 */
+    @Override
     public void unregister() {
         registered = false;
         cleanup();
@@ -107,7 +122,7 @@ public class DominionProtectionListener extends TempAccessListener implements Li
 
     @Override
     protected TempGrant prepare(Block block, Player player) {
-        if (Bukkit.getPluginManager().getPlugin("Dominion") == null) {
+        if (!isActive()) {
             return null;
         }
         DominionAPI api = DominionAPI.getInstance();
@@ -131,6 +146,9 @@ public class DominionProtectionListener extends TempAccessListener implements Li
         return new DomGrant(true, null, false);
     }
 
+    /** 同步等待 Dominion 异步授权接口的超时（秒）：超时后放弃授权并回滚，避免主线程无限阻塞。 */
+    private static final long GRANT_TIMEOUT_SECONDS = 3L;
+
     @Override
     protected void apply(Block block, Player player, TempGrant grant) {
         DomGrant domGrant = (DomGrant) grant;
@@ -144,33 +162,46 @@ public class DominionProtectionListener extends TempAccessListener implements Li
             setMemberFlagDirect(dominion, domGrant.member, true);
             return;
         }
-        // 非成员：先添加成员再授予容器 flag（官方异步接口，缓存更新后生效）
+        // 非成员：先添加成员再授予容器 flag。API 为异步接口（DB 写库在独立线程完成），
+        // 若直接返回则授权尚未生效，同一事件链中领地的交互检查会拦截本次打开；
+        // 因此同步阻塞等待授权完成后再继续（超时放弃并回滚，避免授权残留）
         PlayerDTO playerDTO = api.getPlayer(player.getUniqueId());
         if (playerDTO == null) {
             throw new IllegalStateException("玩家数据缺失，无法添加为领地成员");
         }
-        MemberProvider.getInstance().addMember(null, dominion, playerDTO)
-                .thenAccept(m -> {
-                    if (m == null) {
-                        return;
-                    }
-                    // 与 revoke 用 domGrant 对象锁串行判定：锁内检查撤销标志后再决定授权或清理，
-                    // 避免异步 setMemberFlag(true) 与 revoke 的撤销乱序，导致临时成员带容器 flag 残留
-                    synchronized (domGrant) {
-                        if (domGrant.cancelled) {
-                            // 撤销已先于添加完成发生：清理刚创建的成员，避免成员残留
-                            MemberProvider.getInstance().removeMember(null, dominion, m);
-                            return;
-                        }
-                        MemberProvider.getInstance().setMemberFlag(null, dominion, m, chestFlag(), true);
-                    }
-                });
+        MemberDTO addedMember;
+        try {
+            addedMember = MemberProvider.getInstance().addMember(null, dominion, playerDTO)
+                    .get(GRANT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new IllegalStateException("添加领地成员失败: " + e.getMessage(), e);
+        }
+        if (addedMember == null) {
+            throw new IllegalStateException("添加领地成员返回空");
+        }
+        // 与 revoke 用 domGrant 对象锁串行判定：锁内检查撤销标志后再决定授权或清理，
+        // 避免授权与撤销乱序导致临时成员带容器 flag 残留
+        synchronized (domGrant) {
+            if (domGrant.cancelled) {
+                // 撤销已先于添加完成发生：清理刚创建的成员，避免成员残留
+                MemberProvider.getInstance().removeMember(null, dominion, addedMember);
+                return;
+            }
+            try {
+                MemberProvider.getInstance().setMemberFlag(null, dominion, addedMember, chestFlag(), true)
+                        .get(GRANT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                // flag 设置失败：移除刚添加的成员后抛出（基类会删除记录并中止授权）
+                MemberProvider.getInstance().removeMember(null, dominion, addedMember);
+                throw new IllegalStateException("设置容器 flag 失败: " + e.getMessage(), e);
+            }
+        }
     }
 
     @Override
     protected void revoke(Block block, Player player, TempGrant grant) {
         DomGrant domGrant = (DomGrant) grant;
-        if (!domGrant.granted || Bukkit.getPluginManager().getPlugin("Dominion") == null) {
+        if (!domGrant.granted || !isActive()) {
             return;
         }
         DominionAPI api = DominionAPI.getInstance();

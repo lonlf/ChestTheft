@@ -50,13 +50,18 @@ public class Messages {
     public static volatile String START_PICKING;
     public static volatile String CANCEL_PICKING;
     public static volatile String PICK_INTERRUPTED;
+    public static volatile String PICK_UNLOCKED;
+    /** Tumbler 状态栏"尝试"标签。 */
+    public static volatile String ATTEMPTS_LABEL;
+    /** Tumbler 状态栏 A 已对准可解锁 / 未对准 / 失败动画中（破损）标签。 */
+    public static volatile String TUMBLER_ALIGNED, TUMBLER_MISALIGNED, TUMBLER_DAMAGED;
     public static volatile String RULE;
     public static volatile String RULE_RHYTHM;
     public static volatile String RULE_RIDE;
     public static volatile String RULE_RHYTHM_RIDE;
     public static volatile String RULE_TUMBLER;
     public static volatile String LOCKED_IT;
-    public static volatile String CHEST_LOCKED;
+    public static volatile String BLOCK_LOCKED;
     public static volatile String LOCK_NOT_LOCKABLE;
     public static volatile String GAME_TIMEOUT;
     public static volatile String COOLDOWN;
@@ -107,8 +112,9 @@ public class Messages {
     public static volatile String START_PICKING_FORMAT;
     public static volatile String CANCEL_PICKING_FORMAT;
     public static volatile String PICK_INTERRUPTED_FORMAT;
+    public static volatile String PICK_UNLOCKED_FORMAT;
     public static volatile String LOCKED_IT_FORMAT;
-    public static volatile String CHEST_LOCKED_FORMAT;
+    public static volatile String BLOCK_LOCKED_FORMAT;
     public static volatile String LOCK_NOT_LOCKABLE_FORMAT;
     public static volatile String GAME_TIMEOUT_FORMAT;
     public static volatile String COOLDOWN_FORMAT;
@@ -146,6 +152,7 @@ public class Messages {
     public static volatile String LOG_LANG_FILE_MISSING;
     public static volatile String LOG_ITEM_DUPLICATE;
     public static volatile String LOG_ITEM_INVALID_TYPE;
+    public static volatile String LOG_ITEM_GIVE_KEY_INVALID;
     public static volatile String LOG_ITEM_INVALID_MATERIAL;
     public static volatile String LOG_DB_INIT;
     public static volatile String LOG_DB_CONNECT_FAIL;
@@ -277,8 +284,9 @@ public class Messages {
         START_PICKING_FORMAT = formats.getOrDefault("pickingStart", "message");
         CANCEL_PICKING_FORMAT = formats.getOrDefault("pickingCancel", "message");
         PICK_INTERRUPTED_FORMAT = formats.getOrDefault("pickingInterrupt", "message");
+        PICK_UNLOCKED_FORMAT = formats.getOrDefault("lockPicked", "message");
         LOCKED_IT_FORMAT = formats.getOrDefault("lockSuccess", "title");
-        CHEST_LOCKED_FORMAT = formats.getOrDefault("chestLocked", "message");
+        BLOCK_LOCKED_FORMAT = formats.getOrDefault("blockLocked", "message");
         LOCK_NOT_LOCKABLE_FORMAT = formats.getOrDefault("lockNotLockable", "message");
         GAME_TIMEOUT_FORMAT = formats.getOrDefault("pickingTimeout", "message");
         COOLDOWN_FORMAT = formats.getOrDefault("pickingCooldown", "message");
@@ -491,18 +499,23 @@ public class Messages {
      */
     private static void verifyKeys() {
         // 玩家消息
-        SUCCESS = messages.getOrDefault("success", "&aPicklock successful! The chest is unlocked — open it!");
+        SUCCESS = messages.getOrDefault("success", "&aPicklock successful! The lock has been picked!");
         FAIL = messages.getOrDefault("fail", "&cPicklock failed!");
         START_PICKING = messages.getOrDefault("startPicking", "&aStart picking!");
         CANCEL_PICKING = messages.getOrDefault("cancelPicking", "&aPicklocking cancelled!");
         PICK_INTERRUPTED = messages.getOrDefault("pickInterrupted", "&cPicklocking interrupted!");
+        PICK_UNLOCKED = messages.getOrDefault("lockPicked", "&eThis lock has been picked — everyone can open it!");
+        ATTEMPTS_LABEL = messages.getOrDefault("attemptsLabel", "Attempts");
+        TUMBLER_ALIGNED = messages.getOrDefault("tumblerAligned", "Ready");
+        TUMBLER_MISALIGNED = messages.getOrDefault("tumblerMisaligned", "Misaligned");
+        TUMBLER_DAMAGED = messages.getOrDefault("tumblerDamaged", "Broken");
         RULE = messages.getOrDefault("rule", "&aPicklock started! The cursor moves automatically — click when it enters the unhit zone!");
         RULE_RHYTHM = messages.getOrDefault("ruleRhythm", "&aPicklock started! The cursor moves automatically — click each unhit point in order to unlock!");
         RULE_RIDE = messages.getOrDefault("ruleRide", "&aPicklock started! Move the cursor with A/D and click when it enters the unhit zone!");
         RULE_RHYTHM_RIDE = messages.getOrDefault("ruleRhythmRide", "&aPicklock started! Move the cursor with A/D and click each unhit point in order to unlock!");
         RULE_TUMBLER = messages.getOrDefault("ruleTumbler", "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!");
         LOCKED_IT = messages.getOrDefault("lockedIt", "&aLocked successfully");
-        CHEST_LOCKED = messages.getOrDefault("chestLocked", "&cThis chest is locked!");
+        BLOCK_LOCKED = messages.getOrDefault("blockLocked", "&cThis block is locked!");
         LOCK_NOT_LOCKABLE = messages.getOrDefault("lockNotLockable", "&cThis block cannot be locked!");
         GAME_TIMEOUT = messages.getOrDefault("gameTimeout", "&cPicklock timed out!");
         COOLDOWN = messages.getOrDefault("cooldown", "&cToo fast! Please wait {0} seconds");
@@ -525,9 +538,9 @@ public class Messages {
         PAIR_NOT_LOCKER = messages.getOrDefault("pairNotLocker", "&cOnly the locker can pair a key with this lock!");
         KEY_NOT_MATCHED = messages.getOrDefault("keyNotMatched", "&cThis key does not match this lock!");
         KEY_CHANGED = messages.getOrDefault("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
-        CHEST_PROTECTED = messages.getOrDefault("chestProtected", "&cThis chest is protected by a protection plugin! The lock has been removed.");
-        CHEST_PROTECTED_LOCK_DENIED = messages.getOrDefault("chestProtectedLockDenied", "&cThis chest is protected by a protection plugin! You cannot lock it.");
-        CHEST_PROTECTED_ACCESS_DENIED = messages.getOrDefault("chestProtectedAccessDenied", "&cThis chest is protected by a protection plugin! You cannot operate it.");
+        CHEST_PROTECTED = messages.getOrDefault("chestProtected", "&cThis chest is protected by another plugin! The lock has been removed.");
+        CHEST_PROTECTED_LOCK_DENIED = messages.getOrDefault("chestProtectedLockDenied", "&cThis chest is protected by another plugin! You cannot lock it.");
+        CHEST_PROTECTED_ACCESS_DENIED = messages.getOrDefault("chestProtectedAccessDenied", "&cThis chest is protected by another plugin! You cannot operate it.");
         PLAYER_ONLY = messages.getOrDefault("playerOnly", "&cThis command can only be used by players!");
         RELOADED = messages.getOrDefault("reloaded", "&aConfiguration reloaded!");
         USAGE = messages.getOrDefault("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft debug minigame <level>\n&e  /chesttheft reload");
@@ -550,6 +563,7 @@ public class Messages {
         LOG_LANG_FILE_MISSING = messages.getOrDefault("logLangFileMissing", "Language file not found: {0}, using built-in defaults");
         LOG_ITEM_DUPLICATE = messages.getOrDefault("logItemDuplicate", "Duplicate item ID: {0} ({1} overrides the previous definition)");
         LOG_ITEM_INVALID_TYPE = messages.getOrDefault("logItemInvalidType", "Item {0} missing a valid type (key / lock / picker), skipped");
+        LOG_ITEM_GIVE_KEY_INVALID = messages.getOrDefault("logItemGiveKeyInvalid", "Lock give-key {0} at {1} is not a valid key item, key not given");
         LOG_ITEM_INVALID_MATERIAL = messages.getOrDefault("logItemInvalidMaterial", "Item {0} has invalid material: {1}, using default {2}");
         LOG_DB_INIT = messages.getOrDefault("logDbInit", "Database initialized: {0}");
         LOG_DB_CONNECT_FAIL = messages.getOrDefault("logDbConnectFail", "Failed to connect to database: {0}");
@@ -585,7 +599,7 @@ public class Messages {
         LOG_LOOT_CHEST_INVALID_MATERIAL = messages.getOrDefault("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
         LOG_LOOT_CHEST_ITEM_INVALID = messages.getOrDefault("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
         LOG_LOOT_CHEST_NOT_CONTAINER = messages.getOrDefault("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
-        LOG_PROTECTION_AUTO_UNLOCK = messages.getOrDefault("logProtectionAutoUnlock", "Chest {0} is protected by a protection plugin, lock automatically removed");
+        LOG_PROTECTION_AUTO_UNLOCK = messages.getOrDefault("logProtectionAutoUnlock", "Chest {0} is protected by another plugin, lock automatically removed");
         LOG_STALE_READ_FAIL = messages.getOrDefault("logStaleReadFail", "Failed to read stale temp grant records: {0}");
         LOG_STALE_FOUND = messages.getOrDefault("logStaleFound", "Found {0} stale temp grant records ({1}), cleaning up...");
         LOG_STALE_CLEANED = messages.getOrDefault("logStaleCleaned", "Cleaned stale temp grant: {0} @ {1}");
@@ -621,17 +635,22 @@ public class Messages {
     private static Map<String, String> defaultFileContent(String lang) {
         Map<String, String> map = new LinkedHashMap<>();
         if ("zh_cn".equals(lang)) {
-            map.put("success", "&a撬锁成功！箱子已解锁，请右键打开箱子！");
+            map.put("success", "&a撬锁成功！该锁已被撬开，所有玩家均可打开！");
             map.put("fail", "&c撬锁失败！");
             map.put("startPicking", "&a开始撬锁！");
             map.put("cancelPicking", "&a已取消撬锁！");
             map.put("pickInterrupted", "&c撬锁被中断！");
+            map.put("attemptsLabel", "尝试");
+            map.put("tumblerAligned", "可解锁");
+            map.put("tumblerMisaligned", "未对准");
+            map.put("tumblerDamaged", "破损");
+            map.put("lockPicked", "&e该锁已被撬开，所有玩家均可打开！");
             map.put("rule", "&a撬锁开始！游标自动往复移动，当游标走到未完成判定区时点击鼠标！");
             map.put("ruleRhythm", "&a撬锁开始！游标自动往复移动，依次在未完成判定点处点击，全部命中即可开锁！");
             map.put("ruleRide", "&a撬锁开始！按 A/D 键移动游标，当游标走到未完成判定区时点击鼠标！");
             map.put("ruleRhythmRide", "&a撬锁开始！按 A/D 键移动游标，依次在未完成判定点处点击，全部命中即可开锁！");
             map.put("lockedIt", "&a上锁成功");
-            map.put("chestLocked", "&c这个箱子已上锁！");
+            map.put("blockLocked", "&c该方块已上锁！");
             map.put("lockNotLockable", "&c这个方块不能上锁！");
             map.put("gameTimeout", "&c撬锁超时！");
             map.put("cooldown", "&c操作太频繁，请等待 {0} 秒");
@@ -651,11 +670,11 @@ public class Messages {
             map.put("unlockSuccess", "&a已卸下锁并返还锁物品");
             map.put("unlockConfirm", "&e再次交互以确认卸锁！");
             map.put("pairSuccess", "&a钥匙已与这把锁配对！");
-            map.put("pairNotLocker", "&c该锁还没有配对的钥匙，只有上锁者可以配对钥匙！");
+            map.put("pairNotLocker", "&c只有上锁者可以为该锁配对钥匙！");
             map.put("keyNotMatched", "&c这把钥匙与这把锁不匹配！");
-            map.put("chestProtected", "&c该箱子受保护插件保护，已卸下锁");
-            map.put("chestProtectedLockDenied", "&c该箱子受保护插件保护，无法上锁");
-            map.put("chestProtectedAccessDenied", "&c该箱子受保护插件保护，无法操作");
+            map.put("chestProtected", "&c该箱子受到其他插件保护，已卸下锁");
+            map.put("chestProtectedLockDenied", "&c该箱子受到其他插件保护，无法上锁");
+            map.put("chestProtectedAccessDenied", "&c该箱子受到其他插件保护，无法操作");
             map.put("playerOnly", "&c该命令只能由玩家执行！");
             map.put("reloaded", "&a配置已重载");
             map.put("usage", "&e用法:\n&e  /chesttheft give <玩家> <物品ID> [数量]\n&e  /chesttheft setitem <物品ID>\n&e  /chesttheft check\n&e  /chesttheft lootchest <档案ID>\n&e  /chesttheft debug minigame <等级>\n&e  /chesttheft reload");
@@ -706,7 +725,7 @@ public class Messages {
             map.put("logLootChestInvalidMaterial", "档案 {0} 的展示材质无效: {1}，使用默认值");
             map.put("logLootChestItemInvalid", "档案 {0} 中存在无效的战利品物品: {1}，已跳过");
             map.put("logLootChestNotContainer", "在 {0} 放置战利品箱失败: {1} 不是容器，已跳过生成");
-            map.put("logProtectionAutoUnlock", "箱子 {0} 受保护插件保护，已自动卸下锁");
+            map.put("logProtectionAutoUnlock", "箱子 {0} 受到其他插件保护，已自动卸下锁");
             map.put("logStaleReadFail", "读取崩溃残留的临时授权记录失败: {0}");
             map.put("logStaleFound", "发现 {0} 条崩溃残留的临时授权记录（{1}），正在清理...");
             map.put("logStaleCleaned", "已清理崩溃残留的临时授权: {0} @ {1}");
@@ -723,18 +742,23 @@ public class Messages {
             map.put("logMessagesInit", "消息系统已初始化（语言: {0}）");
             map.put("logMessagesReload", "消息已重载（语言: {0}）");
         } else {
-            map.put("success", "&aPicklock successful! The chest is unlocked — open it!");
+            map.put("success", "&aPicklock successful! The lock has been picked — everyone can open it!");
             map.put("fail", "&cPicklock failed!");
             map.put("startPicking", "&aStart picking!");
             map.put("cancelPicking", "&aPicklocking cancelled!");
             map.put("pickInterrupted", "&cPicklocking interrupted!");
+            map.put("attemptsLabel", "Attempts");
+            map.put("tumblerAligned", "Ready");
+            map.put("tumblerMisaligned", "Misaligned");
+            map.put("tumblerDamaged", "Broken");
+            map.put("lockPicked", "&eThis lock has been picked — everyone can open it!");
             map.put("rule", "&aPicklock started! The cursor moves automatically — click when it enters the unhit zone!");
             map.put("ruleRhythm", "&aPicklock started! The cursor moves automatically — click each unhit point in order to unlock!");
             map.put("ruleRide", "&aPicklock started! Move the cursor with A/D and click when it enters the unhit zone!");
             map.put("ruleRhythmRide", "&aPicklock started! Move the cursor with A/D and click each unhit point in order to unlock!");
             map.put("ruleTumbler", "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!");
             map.put("lockedIt", "&aLocked successfully");
-            map.put("chestLocked", "&cThis chest is locked!");
+            map.put("blockLocked", "&cThis block is locked!");
             map.put("lockNotLockable", "&cThis block cannot be locked!");
             map.put("gameTimeout", "&cPicklock timed out!");
             map.put("cooldown", "&cToo fast! Please wait {0} seconds");
@@ -776,6 +800,7 @@ public class Messages {
             map.put("logLangFileMissing", "Language file not found: {0}, using built-in defaults");
             map.put("logItemDuplicate", "Duplicate item ID: {0} ({1} overrides the previous definition)");
             map.put("logItemInvalidType", "Item {0} missing a valid type (key / lock / picker), skipped");
+            map.put("logItemGiveKeyInvalid", "Lock give-key {0} at {1} is not a valid key item, key not given");
             map.put("logItemInvalidMaterial", "Item {0} has invalid material: {1}, using default {2}");
             map.put("logDbInit", "Database initialized: {0}");
             map.put("logDbConnectFail", "Failed to connect to database: {0}");
@@ -811,7 +836,7 @@ public class Messages {
             map.put("logLootChestInvalidMaterial", "Profile {0} has invalid material: {1}, using default");
             map.put("logLootChestItemInvalid", "Invalid loot item in profile {0}: {1}, skipped");
             map.put("logLootChestNotContainer", "Failed to place loot chest at {0}: {1} is not a container, loot chest skipped");
-            map.put("logProtectionAutoUnlock", "Chest {0} is protected by a protection plugin, lock automatically removed");
+            map.put("logProtectionAutoUnlock", "Chest {0} is protected by another plugin, lock automatically removed");
             map.put("logStaleReadFail", "Failed to read stale temp grant records: {0}");
             map.put("logStaleFound", "Found {0} stale temp grant records ({1}), cleaning up...");
             map.put("logStaleCleaned", "Cleaned stale temp grant: {0} @ {1}");

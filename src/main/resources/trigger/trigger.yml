@@ -20,12 +20,17 @@
 #   属性:   exp / level / food / saturation / potion-effect
 #   物品:   give-item（value 含 item 材质 / amount 数量 / to-inventory 是否入包）
 #   组合:   chain / delay（value 含 delay tick 与 actions 动作组）
+# 注意：撬锁中断提示已由插件内置发送（messages.pickInterrupted），
+# 无需在 interrupted 触发器里再配 message 动作，否则会与内置提示重复发送。
 example_interrupted:
   type: interrupted
   actions:
-    msg1:
-      type: message
-      value: "&c撬锁中断！"
+    snd1:
+      type: sound
+      value:
+        key: "minecraft:block.anvil.land"
+        volume: 0.5
+        pitch: 1.0
 
 # 注意：撬锁成功提示已由插件内置发送（messages.success），
 # 无需在 success 触发器里再配 message 动作，否则会重复提示。

@@ -22,7 +22,7 @@ import java.util.logging.Logger;
 
 public abstract class AbstractDatabase implements Database {
     protected static final String TABLE = "chest_data";
-    /** 临时授权记录表：记录各保护插件打开容器的临时权限，崩溃后启动清理残留。 */
+    /** 临时授权记录表：记录持久化型保护插件打开容器的临时权限，崩溃后启动清理残留。 */
     protected static final String TEMP_GRANT_TABLE = "temp_grants";
 
     protected final Logger logger;

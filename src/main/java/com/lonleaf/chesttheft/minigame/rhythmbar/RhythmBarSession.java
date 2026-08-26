@@ -97,6 +97,8 @@ public class RhythmBarSession extends MiniGameSession {
                 movingRight = true;
             }
         }
+        // 游标移动音效（每格一声）
+        barConfig.getMoveSound().play(player);
     }
 
     /** 骑乘模式：按当前输入方向移动光标，长按按移动间隔连续移动，换向立即生效。 */
@@ -116,6 +118,8 @@ public class RhythmBarSession extends MiniGameSession {
         if (stepCooldown >= barConfig.getMoveInterval()) {
             cursorPos = Math.max(0, Math.min(barConfig.getBarLength() - 1, cursorPos + dir));
             stepCooldown = 0;
+            // 游标移动音效（每格一声）
+            barConfig.getMoveSound().play(player);
         }
     }
 
@@ -142,6 +146,8 @@ public class RhythmBarSession extends MiniGameSession {
         if (target != null && cursorPos >= target.start && cursorPos <= target.end) {
             // 命中当前判定点：下标前进即锁定该条（渲染转完成态），无需单独记录命中状态
             currentIndex++;
+            // 命中判定点音效
+            barConfig.getHitSound().play(player);
             // 命中后立即刷新进度条（转为完成态），无需等待下一个调度周期
             sendProgressBar();
             return currentIndex >= hitBars.size() ? ClickResult.SUCCESS : ClickResult.CONTINUE;

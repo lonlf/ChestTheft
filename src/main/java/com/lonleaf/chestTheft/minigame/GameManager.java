@@ -2,6 +2,7 @@ package com.lonleaf.chesttheft.minigame;
 
 import com.lonleaf.chesttheft.config.GameConfig;
 import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.event.ChestOpenEvent;
 import com.lonleaf.chesttheft.item.ItemManager;
 import com.lonleaf.chesttheft.model.BlockLocation;
 import com.lonleaf.chesttheft.service.ChestService;
@@ -11,8 +12,8 @@ import com.lonleaf.chesttheft.trigger.TriggerType;
 import com.lonleaf.chesttheft.minigame.movingbar.MovingBarMiniGame;
 import com.lonleaf.chesttheft.minigame.rhythmbar.RhythmBarMiniGame;
 import com.lonleaf.chesttheft.minigame.tumblerbar.TumblerBarMiniGame;
+import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -42,8 +43,8 @@ public class GameManager implements Listener {
     private volatile GameConfig defaultGameConfig;
     private final Map<UUID, MiniGameSession> activeGames = new HashMap<>();
     private final Map<UUID, Long> cooldowns = new HashMap<>();
-    /** 撬锁成功后的开箱授权：玩家 → (箱子位置 → 授权记录)。 */
-    private final Map<UUID, Map<BlockLocation, AccessGrant>> grantedAccess = new HashMap<>();
+    /** 撬锁成功后的全局解锁状态：锁位置 → 解锁记录；一人撬锁后所有玩家在有效期内均可打开，过期自动失效。 */
+    private final Map<BlockLocation, GlobalUnlock> unlockedLocks = new HashMap<>();
 
     public GameManager(JavaPlugin plugin, GameConfig defaultGameConfig, TriggerManager triggerManager,
                        ChestService chestService, ItemManager itemManager) {
@@ -139,13 +140,13 @@ public class GameManager implements Listener {
             session.stop();
         }
         cooldowns.remove(uuid);
-        grantedAccess.remove(uuid);
     }
 
     /** 会话主动失败结束（如节奏条光标越过判定点未命中）：发送失败消息、触发失败触发器并结束会话。 */
     public void failGame(MiniGameSession session) {
         Player player = session.getPlayer();
         Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
+        session.getConfig().getFailSound().play(player);
         triggerManager.fire(TriggerType.FAIL, new TriggerContext(player, BlockLocation.from(session.getTarget())));
         fireLockTrigger(session.getTarget(), TriggerType.FAIL, player);
         endGame(player);
@@ -156,18 +157,26 @@ public class GameManager implements Listener {
     public void successGame(MiniGameSession session) {
         Player player = session.getPlayer();
         Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT);
+        session.getConfig().getSuccessSound().play(player);
         triggerManager.fire(TriggerType.SUCCESS, new TriggerContext(player, BlockLocation.from(session.getTarget())));
         fireLockTrigger(session.getTarget(), TriggerType.SUCCESS, player);
-        // 战利品箱等自定义目标：成功后执行回调打开；普通箱子不再自动打开，
+        // 战利品箱等自定义目标：成功后执行回调打开；普通上锁方块（箱子/陷阱箱/门等）不再自动打开，
         // 改为授予开箱授权（access-duration 限时多次 / access-once-window 一次性），由玩家自行右键打开
         Runnable onSuccess = session.getOnSuccess();
         if (onSuccess != null) {
             onSuccess.run();
         } else {
             Block target = session.getTarget();
-            if (target != null && target.getType() == Material.CHEST) {
-                // 使用本局配置（按锁等级选取）：等级配置的 access-duration 才能生效
-                grantAccess(player, BlockLocation.from(target), session.getConfig());
+            if (target != null && !target.getType().isAir()) {
+                // 使用本局配置（按锁等级选取）：等级配置的 access-duration / access-once-window 才能生效。
+                // 全局解锁：一人撬锁后所有玩家均可打开（无需再撬锁），过期自动重新上锁
+                unlockGlobally(BlockLocation.from(target), session.getConfig());
+                // 预授权外部保护（Residence/Dominion/Bolt/LWC 等）：撬锁者随后右键打开时，
+                // 保护插件（LOWEST 先于本插件注册的 Dominion 等）的交互检查已放行，
+                // 不再发送"无权限"提示；该授权在关闭/退出时撤销。无本插件的解锁状态
+                // （isLockPicked）时打开流程本身被 ChestTheft 拦截，故无越权风险
+                Bukkit.getPluginManager().callEvent(
+                        new ChestOpenEvent(player, target, BlockLocation.from(target)));
             }
         }
         endGame(player);
@@ -177,13 +186,9 @@ public class GameManager implements Listener {
         return activeGames.containsKey(player.getUniqueId());
     }
 
-    /** 授予玩家对指定箱子的开箱授权（使用默认配置）：access-duration > 0 时限时多次；= 0 时仅一次打开机会。 */
-    public void grantAccess(Player player, BlockLocation location) {
-        grantAccess(player, location, null);
-    }
-
-    /** 授予玩家对指定箱子的开箱授权（使用本局配置，null 回退默认配置）：access-duration > 0 时限时多次；= 0 时仅一次打开机会。 */
-    public void grantAccess(Player player, BlockLocation location, GameConfig gameConfig) {
+    /** 授予指定锁的全局解锁状态（使用本局配置，null 回退默认配置）：
+     *  access-duration > 0 时限时解锁；= 0 时仅一次打开机会（任意玩家第一次打开后重新上锁）。 */
+    public void unlockGlobally(BlockLocation location, GameConfig gameConfig) {
         GameConfig cfg = gameConfig != null ? gameConfig : defaultGameConfig;
         int duration = cfg.getAccessDurationSeconds();
         long windowMs;
@@ -192,52 +197,36 @@ public class GameManager implements Listener {
             windowMs = duration * 1000L;
             once = false;
         } else {
-            // 一次性授权：仅一次打开机会，在 access-once-window 内有效
+            // 一次性解锁：仅一次打开机会，在 access-once-window 内有效
             windowMs = cfg.getAccessOnceWindowSeconds() * 1000L;
             once = true;
         }
-        grantedAccess.computeIfAbsent(player.getUniqueId(), k -> new HashMap<>())
-                .put(location, new AccessGrant(System.currentTimeMillis() + windowMs, once));
+        unlockedLocks.put(location, new GlobalUnlock(System.currentTimeMillis() + windowMs, once));
     }
 
-    /** 玩家是否持有该箱子的有效开箱授权（过期自动失效）。 */
-    public boolean hasAccess(Player player, BlockLocation location) {
-        Map<BlockLocation, AccessGrant> grants = grantedAccess.get(player.getUniqueId());
-        if (grants == null) {
+    /** 该锁是否处于被撬开的全局解锁状态（任意玩家均可打开；过期自动失效并重新上锁）。 */
+    public boolean isLockPicked(BlockLocation location) {
+        GlobalUnlock unlock = unlockedLocks.get(location);
+        if (unlock == null) {
             return false;
         }
-        AccessGrant grant = grants.get(location);
-        if (grant == null) {
-            return false;
-        }
-        if (System.currentTimeMillis() >= grant.expireAt) {
-            grants.remove(location);
-            if (grants.isEmpty()) {
-                grantedAccess.remove(player.getUniqueId());
-            }
+        if (System.currentTimeMillis() >= unlock.expireAt) {
+            unlockedLocks.remove(location);
             return false;
         }
         return true;
     }
 
-    /** 撤销指定箱子的全部开箱授权（箱子所有者打开箱子后调用，实现"重新上锁"）。 */
+    /** 撤销指定锁的全局解锁状态（锁所有者打开箱子后调用，实现"重新上锁"）。 */
     public void revokeAllAccess(BlockLocation location) {
-        grantedAccess.values().forEach(grants -> grants.remove(location));
-        grantedAccess.values().removeIf(Map::isEmpty);
+        unlockedLocks.remove(location);
     }
 
-    /** 消费一次性授权（打开箱子后调用）；限时授权不受影响。 */
-    public void consumeOnceAccess(Player player, BlockLocation location) {
-        Map<BlockLocation, AccessGrant> grants = grantedAccess.get(player.getUniqueId());
-        if (grants == null) {
-            return;
-        }
-        AccessGrant grant = grants.get(location);
-        if (grant != null && grant.once) {
-            grants.remove(location);
-            if (grants.isEmpty()) {
-                grantedAccess.remove(player.getUniqueId());
-            }
+    /** 消费一次性解锁（任意玩家打开箱子后调用，仅首次打开生效）：一次性解锁立即重新上锁；限时解锁不受影响。 */
+    public void consumeOnceAccess(BlockLocation location) {
+        GlobalUnlock unlock = unlockedLocks.get(location);
+        if (unlock != null && unlock.once) {
+            unlockedLocks.remove(location);
         }
     }
 
@@ -332,15 +321,15 @@ public class GameManager implements Listener {
     public void cleanup() {
         activeGames.values().forEach(MiniGameSession::stop);
         activeGames.clear();
-        grantedAccess.clear();
+        unlockedLocks.clear();
     }
 
-    /** 开箱授权记录：expireAt 为过期时间戳，once 为 true 时仅可打开一次（打开后消耗）。 */
-    private static final class AccessGrant {
+    /** 全局解锁记录：expireAt 为过期时间戳，once 为 true 时仅可打开一次（任意玩家首次打开后重新上锁）。 */
+    private static final class GlobalUnlock {
         final long expireAt;
         final boolean once;
 
-        AccessGrant(long expireAt, boolean once) {
+        GlobalUnlock(long expireAt, boolean once) {
             this.expireAt = expireAt;
             this.once = once;
         }

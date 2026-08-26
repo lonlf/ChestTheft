@@ -52,6 +52,20 @@ public class ItemTagger {
         }
     }
 
+    /** 清除钥匙的配对信息（卸锁后锁已移除，配对失效恢复为未配对状态）。 */
+    public void clearPairedLock(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) {
+            return;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return;
+        }
+        meta.getPersistentDataContainer().remove(lockKey);
+        meta.getPersistentDataContainer().remove(tokenKey);
+        item.setItemMeta(meta);
+    }
+
     /** 读取钥匙配对的锁凭证，旧钥匙或无凭证返回 null。 */
     public String getPairedToken(ItemStack item) {
         if (item == null || !item.hasItemMeta()) {

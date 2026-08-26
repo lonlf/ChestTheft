@@ -79,6 +79,16 @@ public class ItemManager {
         return def == null ? 0 : def.getLevel();
     }
 
+    /** 读取锁物品定义的 give-key（上锁后自动给予的配对钥匙 ID），未配置或物品无定义时返回 null。 */
+    public String getGiveKey(ItemStack item) {
+        String id = tagger.getId(item);
+        if (id == null) {
+            return null;
+        }
+        ItemDefinition def = configManager.getDefinition(id);
+        return def == null ? null : def.getGiveKey();
+    }
+
     public void tag(ItemStack item, String id) {
         tagger.tag(item, id);
     }
@@ -92,6 +102,11 @@ public class ItemManager {
 
     public void setPairedLock(ItemStack item, BlockLocation location, String token) {
         tagger.setPairedLock(item, location, token);
+    }
+
+    /** 清除钥匙的配对信息（卸锁后恢复未配对状态）。 */
+    public void clearPairedLock(ItemStack item) {
+        tagger.clearPairedLock(item);
     }
 
     /** 读取钥匙配对的锁凭证，旧钥匙或无凭证返回 null。 */

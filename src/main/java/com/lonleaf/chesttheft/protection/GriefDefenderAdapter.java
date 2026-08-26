@@ -19,26 +19,36 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * GriefDefender 领地保护集成（软依赖）：领地创建自动卸锁 + 打开前临时授予 CONTAINER 信任。
- * 信任授予记录入库，崩溃后启动清理移除。
+ * GriefDefender 领地保护适配器（软依赖）：领地创建自动卸锁 + 打开前事件内临时授予 CONTAINER 信任。
+ * 信任为持久化写入（GD 库），授权前落库，崩溃后启动清理移除。
  */
-public class GriefDefenderProtectionListener extends TempAccessListener {
+public class GriefDefenderAdapter extends TempAccessAdapter {
 
-    /** 保护创建回调（自动卸锁逻辑，由 ProtectionListener 提供）。 */
-    private final Consumer<Block> protectionCreatedHandler;
     /** 领地创建事件订阅（注销时用于退订）。 */
     private EventSubscription subscription;
-    /** 是否已注册 Bukkit 监听器。 */
-    private boolean registered = false;
 
-    public GriefDefenderProtectionListener(Plugin plugin, Consumer<Block> protectionCreatedHandler, Database database) {
+    public GriefDefenderAdapter(Plugin plugin, Database database) {
         super(plugin, database);
-        this.protectionCreatedHandler = protectionCreatedHandler;
     }
 
     @Override
-    protected String pluginType() {
+    public String pluginType() {
         return "griefdefender";
+    }
+
+    @Override
+    public boolean isActive() {
+        return Bukkit.getPluginManager().getPlugin("GriefDefender") != null;
+    }
+
+    @Override
+    public boolean isProtected(Block block) {
+        return ProtectionUtil.isGriefDefenderProtected(block);
+    }
+
+    @Override
+    public UUID getOwnerUUID(Block block) {
+        return ProtectionUtil.griefDefenderOwner(block);
     }
 
     @Override
@@ -48,7 +58,7 @@ public class GriefDefenderProtectionListener extends TempAccessListener {
 
     @Override
     protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
-        if (Bukkit.getPluginManager().getPlugin("GriefDefender") == null) {
+        if (!isActive()) {
             return;
         }
         Claim claim = GriefDefender.getCore().getClaimAt(block.getLocation());
@@ -58,25 +68,23 @@ public class GriefDefenderProtectionListener extends TempAccessListener {
         claim.removeUserTrust(playerUuid, TrustTypes.CONTAINER);
     }
 
-    /** 注册 Bukkit 监听器并订阅 GriefDefender 领地创建事件（仅 GriefDefender 插件存在时）。 */
-    public void register() {
-        if (Bukkit.getPluginManager().getPlugin("GriefDefender") != null && !registered) {
-            Bukkit.getPluginManager().registerEvents(this, plugin);
-            registered = true;
-            if (subscription == null) {
-                subscription = GriefDefender.getEventManager().getBus()
-                        .subscribe(CreateClaimEvent.Post.class, this::onClaimCreated);
-            }
+    /** 注册并订阅 GriefDefender 领地创建事件（仅 GriefDefender 插件存在时）。 */
+    @Override
+    public void register(Consumer<Block> protectionCreatedHandler) {
+        super.register(protectionCreatedHandler);
+        if (isActive() && subscription == null) {
+            subscription = GriefDefender.getEventManager().getBus()
+                    .subscribe(CreateClaimEvent.Post.class, this::onClaimCreated);
         }
     }
 
     /** 退订领地创建事件监听并清理临时授权。 */
+    @Override
     public void unregister() {
         if (subscription != null) {
             subscription.unsubscribe();
             subscription = null;
         }
-        registered = false;
         cleanup();
     }
 
@@ -84,7 +92,7 @@ public class GriefDefenderProtectionListener extends TempAccessListener {
 
     @Override
     protected TempGrant prepare(Block block, Player player) {
-        if (Bukkit.getPluginManager().getPlugin("GriefDefender") == null) {
+        if (!isActive()) {
             return null;
         }
         Claim claim = GriefDefender.getCore().getClaimAt(block.getLocation());
@@ -116,7 +124,7 @@ public class GriefDefenderProtectionListener extends TempAccessListener {
 
     @Override
     protected void revoke(Block block, Player player, TempGrant grant) {
-        if (!grant.granted || Bukkit.getPluginManager().getPlugin("GriefDefender") == null) {
+        if (!grant.granted || !isActive()) {
             return;
         }
         Claim claim = GriefDefender.getCore().getClaimAt(block.getLocation());

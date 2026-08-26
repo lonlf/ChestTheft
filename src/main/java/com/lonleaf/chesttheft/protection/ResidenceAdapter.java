@@ -23,24 +23,36 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * Residence 领地保护集成（软依赖）：领地创建自动卸锁 + 打开前临时授予 container flag。
- * 玩家原 flag 值入库，崩溃后启动清理恢复。
+ * Residence 领地保护适配器（软依赖）：领地创建自动卸锁 + 打开前事件内临时授予 container flag。
+ * flag 为持久化写入（Residence 库），授权前落库（记录原值），崩溃后启动清理恢复。
  */
-public class ResidenceProtectionListener extends TempAccessListener implements Listener {
+public class ResidenceAdapter extends TempAccessAdapter implements Listener {
 
-    /** 保护创建回调（自动卸锁逻辑，由 ProtectionListener 提供）。 */
-    private final Consumer<Block> protectionCreatedHandler;
     /** 是否已注册监听。 */
     private boolean registered = false;
 
-    public ResidenceProtectionListener(Plugin plugin, Consumer<Block> protectionCreatedHandler, Database database) {
+    public ResidenceAdapter(Plugin plugin, Database database) {
         super(plugin, database);
-        this.protectionCreatedHandler = protectionCreatedHandler;
     }
 
     @Override
-    protected String pluginType() {
+    public String pluginType() {
         return "residence";
+    }
+
+    @Override
+    public boolean isActive() {
+        return Bukkit.getPluginManager().getPlugin("Residence") != null;
+    }
+
+    @Override
+    public boolean isProtected(Block block) {
+        return ProtectionUtil.isResidenceProtected(block);
+    }
+
+    @Override
+    public UUID getOwnerUUID(Block block) {
+        return ProtectionUtil.residenceOwner(block);
     }
 
     @Override
@@ -65,14 +77,16 @@ public class ResidenceProtectionListener extends TempAccessListener implements L
     }
 
     /** 注册 Residence 领地创建事件监听（仅 Residence 插件存在时）。 */
-    public void register() {
-        if (Bukkit.getPluginManager().getPlugin("Residence") != null && !registered) {
+    @Override
+    public void register(Consumer<Block> protectionCreatedHandler) {
+        super.register(protectionCreatedHandler);
+        if (isActive() && !registered) {
             Bukkit.getPluginManager().registerEvents(this, plugin);
             registered = true;
         }
     }
 
-    /** 注销监听（插件禁用时由 Bukkit 自动注销，此处标记状态并清理临时授权）。 */
+    @Override
     public void unregister() {
         registered = false;
         cleanup();
@@ -82,7 +96,7 @@ public class ResidenceProtectionListener extends TempAccessListener implements L
 
     @Override
     protected TempGrant prepare(Block block, Player player) {
-        if (Bukkit.getPluginManager().getPlugin("Residence") == null) {
+        if (!isActive()) {
             return null;
         }
         ClaimedResidence res = ResidenceApi.getResidenceManager().getByLoc(block.getLocation());
@@ -111,7 +125,7 @@ public class ResidenceProtectionListener extends TempAccessListener implements L
     @Override
     protected void revoke(Block block, Player player, TempGrant grant) {
         ResGrant resGrant = (ResGrant) grant;
-        if (!resGrant.granted || Bukkit.getPluginManager().getPlugin("Residence") == null) {
+        if (!resGrant.granted || !isActive()) {
             return;
         }
         ClaimedResidence res = ResidenceApi.getResidenceManager().getByLoc(block.getLocation());

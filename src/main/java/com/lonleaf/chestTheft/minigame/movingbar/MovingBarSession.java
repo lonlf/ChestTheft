@@ -91,6 +91,8 @@ public class MovingBarSession extends MiniGameSession {
                 movingRight = true;
             }
         }
+        // 游标移动音效（每格一声）
+        barConfig.getMoveSound().play(player);
     }
 
     /** 骑乘模式：按当前输入方向移动光标，长按按移动间隔连续移动，换向立即生效。 */
@@ -111,6 +113,8 @@ public class MovingBarSession extends MiniGameSession {
         if (stepCooldown >= barConfig.getMoveInterval()) {
             cursorPos = Math.max(0, Math.min(barConfig.getBarLength() - 1, cursorPos + dir));
             stepCooldown = 0;
+            // 游标移动音效（每格一声）
+            barConfig.getMoveSound().play(player);
         }
     }
 
@@ -191,5 +195,15 @@ public class MovingBarSession extends MiniGameSession {
     @Override
     public boolean checkSuccess() {
         return cursorPos >= unhitStart && cursorPos < unhitStart + unhitLength;
+    }
+
+    @Override
+    public ClickResult onClick() {
+        if (checkSuccess()) {
+            // 点击命中判定区：播放命中音效
+            barConfig.getHitSound().play(player);
+            return ClickResult.SUCCESS;
+        }
+        return ClickResult.FAIL;
     }
 }

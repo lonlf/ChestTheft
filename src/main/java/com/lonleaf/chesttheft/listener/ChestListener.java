@@ -22,6 +22,7 @@ import com.lonleaf.chesttheft.trigger.TriggerType;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 
@@ -86,20 +87,35 @@ public class ChestListener implements Listener {
             return;
         }
 
-        // 其他插件（如更早注册的 LOWEST 保护插件）已取消本次交互：本插件不处理，避免触发撬锁开始/配对/上锁
-        if (event.isCancelled()) {
-            return;
-        }
-
         ItemStack item = event.getItem();
         Block block = event.getClickedBlock();
-        if (block == null) {
+        if (block != null) {
+            // 双箱/门等一体方块：点击未上锁的一侧时归一化到已上锁的一侧处理
+            // （双箱共享容器、门上下半一体，未上锁侧可直接打开整个结构，构成安全漏洞）
+            Block lockedBlock = resolveLockedBlock(block);
+            if (lockedBlock != null) {
+                block = lockedBlock;
+            }
+            // 门已打开（关门动作，仅右键切换门状态）：关门不涉及物品安全（门无容器），
+            // 空手/任意手持直接放行，置于外部取消检查之前：即使保护插件已取消交互也放行关门；
+            // 左键交互（配对/卸锁）不受影响
+            if (event.getAction() == Action.RIGHT_CLICK_BLOCK
+                    && isDoor(block.getType()) && isDoorOpen(block) && chestService.isLocked(block)) {
+                // 同样先触发打开事件完成临时授权（下一 tick 收回），避免保护插件拦截关门交互
+                if (fireOpenEvent(event, player, block, BlockLocation.from(block))) {
+                    event.setCancelled(false);
+                }
+                return;
+            }
+        }
+        // 其他插件（如更早注册的 LOWEST 保护插件）已取消本次交互：本插件不处理，避免触发撬锁开始/配对/上锁；
+        // 例外：启用撬锁（P=true）时，外部保护对本插件"撬锁尝试 / 已获开箱授权（撬锁成功）"的取消应忽略，
+        // 二者的后续流程（ChestOpenEvent）都会完成外部保护的临时授权，拦截取消会阻断流程
+        if (event.isCancelled() && !isExternalCancelIgnored(item, event, block, player)) {
             return;
         }
-        // 双箱子：点击未上锁的一侧时归一化到已上锁的一侧处理（双箱共享容器，未上锁侧可直接打开整个双箱）
-        Block lockedBlock = resolveLockedChestBlock(block);
-        if (lockedBlock != null) {
-            block = lockedBlock;
+        if (block == null) {
+            return;
         }
 
         if (chestService.isLocked(block)) {
@@ -112,18 +128,20 @@ public class ChestListener implements Listener {
                 event.setCancelled(true);
                 return;
             }
-            // 撬锁成功后的授权：有效期内该玩家可直接打开箱子（左键等仍拦截，避免误破坏方块）
-            if (gameManager.hasAccess(player, location)) {
+            // 撬锁成功后的全局解锁：有效期内任意玩家可直接打开箱子（左键等仍拦截，避免误破坏方块）
+            if (gameManager.isLockPicked(location)) {
                 if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-                    // 打开容器前同样触发打开事件：限时授权期内再次打开也需临时授予 Bolt 权限，避免被拦截
+                    // 打开容器前同样触发打开事件：解锁期内再次打开也需临时授予 Bolt 权限，避免被拦截
                     if (!fireOpenEvent(event, player, block, location)) {
                         return;
                     }
                     event.setCancelled(false);
-                    // 一次性授权在打开后消耗；限时授权不受影响
-                    gameManager.consumeOnceAccess(player, location);
-                    // 仅"使用钥匙操作"打开后才撤销（含本人撬锁获得的）授权，实现重新上锁；
-                    // 空手/其他方式打开保留授权窗口
+                    // 该锁处于被撬开的解锁状态：打开时提示所有打开者
+                    Messages.send(player, Messages.PICK_UNLOCKED, Messages.PICK_UNLOCKED_FORMAT);
+                    // 一次性解锁在打开后消耗（任意玩家首次打开即重新上锁）；限时解锁不受影响
+                    gameManager.consumeOnceAccess(location);
+                    // 仅"使用钥匙操作"打开后才撤销解锁状态，实现重新上锁；
+                    // 空手/其他方式打开保留解锁窗口
                     if (isKeyOperation(item, player, block, location)) {
                         revokeAccessIfLocker(player, block, location);
                     }
@@ -134,10 +152,11 @@ public class ChestListener implements Listener {
             }
             ItemType handType = item == null ? null : itemManager.getType(item);
             if (handType == ItemType.PICKER) {
-                if (event.getAction() != Action.RIGHT_CLICK_BLOCK || block.getType() != Material.CHEST) {
+                // 统一放行：任何已上锁的可上锁方块（箱子/陷阱箱/木门等）均可持撬锁器开始撬锁
+                if (event.getAction() != Action.RIGHT_CLICK_BLOCK || !config.isLockable(block.getType())) {
                     return;
                 }
-                startNewGame(event, player);
+                startNewGame(event, player, block);
             } else if (handType == ItemType.KEY) {
                 if (isKeyInteractionPress(event, player)) {
                     // 交互按键：未配对钥匙由上锁者配对；已配对钥匙卸下锁
@@ -188,7 +207,7 @@ public class ChestListener implements Listener {
                 revokeAccessIfLocker(player, block, location);
             } else {
                 event.setCancelled(true);
-                Messages.send(player, Messages.CHEST_LOCKED, Messages.CHEST_LOCKED_FORMAT);
+                Messages.send(player, Messages.BLOCK_LOCKED, Messages.BLOCK_LOCKED_FORMAT);
             }
         } else if (item != null && itemManager.isType(item, ItemType.LOCK)) {
             // 仅右键上锁（左键放行不处理，防误触锁定）
@@ -222,7 +241,7 @@ public class ChestListener implements Listener {
             // 上锁失败（并发下位置已存在锁记录）时不消耗锁物品，避免物品凭空消失
             if (!chestService.lock(block, storedLock, player.getUniqueId().toString(), level)) {
                 event.setCancelled(true);
-                Messages.send(player, Messages.CHEST_LOCKED, Messages.CHEST_LOCKED_FORMAT);
+                Messages.send(player, Messages.BLOCK_LOCKED, Messages.BLOCK_LOCKED_FORMAT);
                 return;
             }
             if (item.getAmount() > 1) {
@@ -236,11 +255,39 @@ public class ChestListener implements Listener {
             BlockLocation location = BlockLocation.from(block);
             triggerManager.fire(TriggerType.LOCK, new TriggerContext(player, location));
             triggerManager.fireForLock(triggerIds, TriggerType.LOCK, new TriggerContext(player, location));
+            // give-key 配置：上锁完成自动给予已配对此锁的钥匙（指定 ID 的钥匙物品）
+            giveKeyOnLock(player, block, item, location);
             // 锁等级未配置（撬锁时会降级回退）时恒输出日志便于排查配置问题；等级已配置时仅 debug 输出
             if (!lockConfigManager.isLevelConfigured(level) || config.isDebug()) {
                 gameManager.getPlugin().getLogger().info(Messages.getLog(Messages.LOG_LOCK_APPLIED,
                         player.getName(), location, level));
             }
+        }
+    }
+
+    /** give-key 配置：按锁物品定义的 give-key 创建配对钥匙并给予上锁者（未配置或定义无效时不给予）。 */
+    private void giveKeyOnLock(Player player, Block block, ItemStack lockItem, BlockLocation location) {
+        String keyId = itemManager.getGiveKey(lockItem);
+        if (keyId == null || keyId.isEmpty()) {
+            return;
+        }
+        ItemStack key = itemManager.create(keyId, 1);
+        if (key == null) {
+            gameManager.getPlugin().getLogger().warning(Messages.getLog(Messages.LOG_ITEM_GIVE_KEY_INVALID,
+                    keyId, location));
+            return;
+        }
+        if (!itemManager.isType(key, ItemType.KEY)) {
+            gameManager.getPlugin().getLogger().warning(Messages.getLog(Messages.LOG_ITEM_GIVE_KEY_INVALID,
+                    keyId, location));
+            return;
+        }
+        // 配对到刚上锁的锁（凭证一致，可直接开锁）
+        itemManager.setPairedLock(key, location, chestService.getLockToken(block));
+        chestService.increasePairedCount(block);
+        Map<Integer, ItemStack> leftover = player.getInventory().addItem(key);
+        for (ItemStack drop : leftover.values()) {
+            player.getWorld().dropItemNaturally(block.getLocation().add(0.5, 1.0, 0.5), drop);
         }
     }
 
@@ -389,6 +436,12 @@ public class ChestListener implements Listener {
         for (ItemStack drop : leftover.values()) {
             player.getWorld().dropItemNaturally(block.getLocation().add(0.5, 1.0, 0.5), drop);
         }
+        // 卸锁后手中钥匙的配对已失效，恢复为未配对状态（事件物品为快照，需写回手部槽位持久化并刷新 lore）
+        ItemStack hand = event.getItem();
+        if (hand != null && itemManager.isType(hand, ItemType.KEY)) {
+            itemManager.clearPairedLock(hand);
+            player.getInventory().setItem(event.getHand(), hand);
+        }
         if (sendUnlockMessage) {
             Messages.send(player, Messages.UNLOCK_SUCCESS, Messages.UNLOCK_SUCCESS_FORMAT);
         }
@@ -438,6 +491,7 @@ public class ChestListener implements Listener {
             case SUCCESS -> gameManager.successGame(session);
             case FAIL -> {
                 Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
+                session.getConfig().getFailSound().play(player);
                 triggerManager.fire(TriggerType.FAIL, new TriggerContext(player, BlockLocation.from(session.getTarget())));
                 fireLockTrigger(session.getTarget(), TriggerType.FAIL, player);
                 gameManager.endGame(player);
@@ -448,8 +502,58 @@ public class ChestListener implements Listener {
         }
     }
 
-    private void startNewGame(PlayerInteractEvent event, Player player) {
-        Block target = event.getClickedBlock();
+    /**
+     * 是否应忽略外部保护插件对本次交互的取消：仅当启用撬锁（P=true）且本次属于本插件的
+     * 撬锁尝试、已获开箱授权的打开或匹配钥匙打开。外部保护（如 LOWEST 且先于本插件注册的
+     * Dominion）会取消未授权玩家对保护箱的交互；P=true 时本插件设计上允许偷窃，故这些操作
+     * 不应被阻断，其后续流程会通过 ChestOpenEvent 临时授予外部保护访问权限。
+     */
+    private boolean isExternalCancelIgnored(ItemStack item, PlayerInteractEvent event, Block block, Player player) {
+        if (!config.isProtectionPickingEnabled()) {
+            return false;
+        }
+        // 撬锁尝试：持撬锁器右键上锁箱子（开始撬锁流程）
+        if (isPickAttemptIgnoringCancel(item, event, block)) {
+            return true;
+        }
+        if (block == null || !chestService.isLocked(block)) {
+            return false;
+        }
+        BlockLocation location = BlockLocation.from(block);
+        // 已获全局解锁（撬锁成功后）：放行打开流程（ChestOpenEvent 临时授予外部保护访问权限）
+        if (gameManager.isLockPicked(location)) {
+            return true;
+        }
+        // 匹配钥匙打开：非上锁者持已配对且凭证匹配的钥匙（或配置允许时背包中的匹配钥匙），放行打开流程
+        boolean handKeyMatched = item != null && itemManager.isType(item, ItemType.KEY)
+                && isKeyMatched(item, location, block);
+        boolean bagKeyMatched = !config.isKeyRequireInHand() && hasMatchedBagKey(player, block, location);
+        return event.getAction() == Action.RIGHT_CLICK_BLOCK && (handKeyMatched || bagKeyMatched);
+    }
+
+    /**
+     * 是否为可忽略外部取消的撬锁尝试：启用撬锁（protection.picking-enabled）且持撬锁器右键上锁的可上锁方块
+     * （箱子/陷阱箱/木门等，方块已在上层归一化为已上锁的一侧）。
+     * 外部保护插件（如 LOWEST 优先级且注册早于本插件的 Bolt）会取消未授权玩家对保护箱的交互，
+     * 但撬锁启用时本插件设计上允许偷窃，因此这类取消不应阻止撬锁开始。
+     */
+    private boolean isPickAttemptIgnoringCancel(ItemStack item, PlayerInteractEvent event, Block block) {
+        return config.isProtectionPickingEnabled()
+                && item != null
+                && itemManager.getType(item) == ItemType.PICKER
+                && event.getAction() == Action.RIGHT_CLICK_BLOCK
+                && block != null
+                && config.isLockable(block.getType())
+                && chestService.isLocked(block);
+    }
+
+    /**
+     * 开始撬锁小游戏。
+     *
+     * @param target 上锁的箱子方块（已归一化：双箱点击未上锁侧时传上锁侧，
+     *               保证成功后授权的开箱位置与实际上锁侧一致，打开时不匹配而失败）
+     */
+    private void startNewGame(PlayerInteractEvent event, Player player, Block target) {
         // 撬锁开始事件：外部保护集成等可在此阻止开始撬锁
         ChestPickStartEvent pickEvent = new ChestPickStartEvent(player, target, BlockLocation.from(target));
         Bukkit.getPluginManager().callEvent(pickEvent);
@@ -483,8 +587,8 @@ public class ChestListener implements Listener {
         if (!config.isLockable(block.getType())) {
             return;
         }
-        // 双箱子：破坏未上锁的一侧时同样归一化到已上锁的一侧（双箱被破坏会整体掉落）
-        Block lockedBlock = resolveLockedChestBlock(block);
+        // 双箱/门等一体方块：破坏未上锁的一侧时同样归一化到已上锁的一侧（破坏任何一侧都会摧毁整个结构）
+        Block lockedBlock = resolveLockedBlock(block);
         if (lockedBlock == null) {
             return;
         }
@@ -498,33 +602,64 @@ public class ChestListener implements Listener {
     }
 
     /**
-     * 双箱子归一化：方块本身已上锁时返回自身；方块未上锁但对侧已上锁时返回已上锁的一侧；
-     * 都不是上锁箱子时返回 null。双箱共享同一容器，未上锁侧可直接打开/破坏整个双箱，构成安全漏洞，
-     * 因此交互与破坏需统一按已上锁的一侧处理。
+     * 一体方块归一化：方块本身已上锁时返回自身；方块未上锁但"另一半"已上锁时返回已上锁的一侧；
+     * 都不是上锁方块时返回 null。双箱共享同一容器、门上下半为一体，未上锁侧可直接打开/破坏整个
+     * 结构，构成安全漏洞，因此交互与破坏需统一按已上锁的一侧处理。
      */
-    private Block resolveLockedChestBlock(Block block) {
+    private Block resolveLockedBlock(Block block) {
         if (chestService.isLocked(block)) {
             return block;
         }
-        if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST) {
-            return null;
-        }
-        if (!(block.getState() instanceof Chest chestState)) {
-            return null;
-        }
-        InventoryHolder holder = chestState.getInventory().getHolder();
-        if (!(holder instanceof DoubleChest doubleChest)) {
-            return null;
-        }
-        for (InventoryHolder side : new InventoryHolder[]{doubleChest.getLeftSide(), doubleChest.getRightSide()}) {
-            if (side instanceof Chest sideChest) {
-                Block sideBlock = sideChest.getBlock();
-                if (sideBlock != null && chestService.isLocked(sideBlock)) {
-                    return sideBlock;
+        if (block.getType() == Material.CHEST || block.getType() == Material.TRAPPED_CHEST) {
+            if (!(block.getState() instanceof Chest chestState)) {
+                return null;
+            }
+            InventoryHolder holder = chestState.getInventory().getHolder();
+            if (!(holder instanceof DoubleChest doubleChest)) {
+                return null;
+            }
+            for (InventoryHolder side : new InventoryHolder[]{doubleChest.getLeftSide(), doubleChest.getRightSide()}) {
+                if (side instanceof Chest sideChest) {
+                    Block sideBlock = sideChest.getBlock();
+                    if (sideBlock != null && chestService.isLocked(sideBlock)) {
+                        return sideBlock;
+                    }
                 }
             }
+            return null;
+        }
+        // 门（上下半一体）：对半已上锁时返回已上锁的一侧
+        Block other = doorCounterpart(block);
+        if (other != null && chestService.isLocked(other)) {
+            return other;
         }
         return null;
+    }
+
+    /** 门的另一半（上下半）；非门方块或另一半缺失时返回 null。 */
+    private Block doorCounterpart(Block block) {
+        if (!isDoor(block.getType())) {
+            return null;
+        }
+        Block up = block.getRelative(BlockFace.UP);
+        Block down = block.getRelative(BlockFace.DOWN);
+        if (up.getType() == block.getType()) {
+            return up;
+        }
+        if (down.getType() == block.getType()) {
+            return down;
+        }
+        return null;
+    }
+
+    /** 是否为门方块（木门/铁门等上下半一体的 *_DOOR；陷阱门 *_TRAPDOOR 不在此列）。 */
+    private boolean isDoor(Material material) {
+        return material != null && material.name().endsWith("_DOOR") && !material.name().endsWith("_TRAPDOOR");
+    }
+
+    /** 门当前是否处于打开状态（门 open 属性；非门方块返回 false）。 */
+    private boolean isDoorOpen(Block block) {
+        return block.getState().getBlockData() instanceof org.bukkit.block.data.type.Door door && door.isOpen();
     }
 
     /** MONITOR 最后执行：保护插件取消爆炸后不再掉落锁物品（否则箱子没坏但锁没了）。 */

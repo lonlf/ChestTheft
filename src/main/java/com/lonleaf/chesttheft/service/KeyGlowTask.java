@@ -6,13 +6,14 @@ import com.github.retrooper.packetevents.protocol.particle.type.ParticleTypes;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerParticle;
 import com.lonleaf.chesttheft.config.PluginConfig;
+import com.lonleaf.chesttheft.display.DisplayEntityUtil;
 import com.lonleaf.chesttheft.item.ItemManager;
 import com.lonleaf.chesttheft.item.ItemType;
-import com.lonleaf.chesttheft.lootchest.LootChestDisplay;
 import com.lonleaf.chesttheft.model.BlockLocation;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
@@ -51,6 +52,14 @@ public class KeyGlowTask extends BukkitRunnable {
     private final Map<BlockLocation, int[]> glowEntities = new HashMap<>();
     /** 方块位置 → 发光 key：双箱两侧统一指向双箱 key（东北角块），单箱指向自身；每次对账重建。 */
     private final Map<BlockLocation, BlockLocation> sideToGlowKey = new HashMap<>();
+    /** 最近一次对账的匹配结果：发光 key → 可见观众；延迟重生任务据此判断玩家是否仍持有匹配钥匙。 */
+    private final Map<BlockLocation, Set<UUID>> glowMatched = new HashMap<>();
+    /** 门发光实体已同步的开门状态（仅门位置登记）：open 变化时销毁实体等待重生（生成时只复制一次，门转动后需跟随）。 */
+    private final Map<BlockLocation, Boolean> doorGlowOpen = new HashMap<>();
+    /** 门 open 变化后延迟重生的调度任务（按位置登记）：销毁旧实体等转动动画播完再生成新状态实体，避免静态实体与动画错位。 */
+    private final Map<BlockLocation, BukkitTask> pendingDoorSync = new HashMap<>();
+    /** 门 open 状态变化后延迟重生的时长（5 tick），等待客户端门转动动画播完。 */
+    private static final long DOOR_SYNC_DELAY_TICKS = 5L;
     /** 打开中的箱子位置：打开时移除发光实体（避免原版开盖动画与静态展示实体错位），关闭后延迟恢复。 */
     private final Set<BlockLocation> openChests = new HashSet<>();
     /** 关闭后延迟恢复发光的调度任务（按位置登记，延迟期间重新打开则取消，避免误恢复）。 */
@@ -82,7 +91,7 @@ public class KeyGlowTask extends BukkitRunnable {
         Color glowColor = config.getKeyGlowColor();
         double glowRadiusSq = config.getKeyGlowRadius() * config.getKeyGlowRadius();
         // 匹配结果：发光 key（单箱=自身 / 双箱=统一 key）→ 可见观众（持有匹配钥匙且在发光范围内的玩家）
-        Map<BlockLocation, Set<UUID>> glowMatched = new HashMap<>();
+        glowMatched.clear();
         sideToGlowKey.clear();
         for (Player player : Bukkit.getOnlinePlayers()) {
             ItemStack hand = player.getInventory().getItemInMainHand();
@@ -144,30 +153,88 @@ public class KeyGlowTask extends BukkitRunnable {
             Map.Entry<BlockLocation, int[]> entry = iterator.next();
             Set<UUID> holders = glowMatched.get(entry.getKey());
             if (holders == null) {
-                LootChestDisplay.destroyEntity(entry.getValue());
+                DisplayEntityUtil.destroyEntity(entry.getValue());
+                doorGlowOpen.remove(entry.getKey());
                 iterator.remove();
             } else {
-                LootChestDisplay.syncGlowViewers(entry.getValue(), holders);
+                DisplayEntityUtil.syncGlowViewers(entry.getValue(), holders);
+                // 门 open 状态变化时延迟刷新展示实体方块状态，使其跟随真实门转动
+                syncDoorGlowState(entry.getKey());
             }
         }
         for (BlockLocation loc : glowMatched.keySet()) {
-            if (openChests.contains(loc) || glowEntities.containsKey(loc)) {
+            // 打开中 / 已存在实体 / 门转动等待重生（销毁后 5 tick 内）的位置跳过，不重复生成
+            if (openChests.contains(loc) || glowEntities.containsKey(loc) || pendingDoorSync.containsKey(loc)) {
                 continue;
             }
-            World world = loc.toWorld();
-            if (world == null) {
-                continue;
-            }
-            Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
-            List<Block> sides = chestSides(block);
-            int[] entityIds;
-            if (sides.size() > 1) {
-                // 双箱：左右两个真实方块状态（type=left/right）的展示实体并排，还原双箱外观
-                entityIds = LootChestDisplay.spawnGlowDisplayDouble(block, sides.get(1), glowArgb(glowColor), glowMatched.get(loc));
+            spawnGlowEntities(loc, glowMatched.get(loc), glowColor);
+        }
+    }
+
+    /** 按位置生成发光展示实体并登记（门/双箱/单箱按真实方块结构生成；生成时复制最新方块状态）。 */
+    private void spawnGlowEntities(BlockLocation loc, Set<UUID> holders, Color glowColor) {
+        World world = loc.toWorld();
+        if (world == null) {
+            return;
+        }
+        Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
+        List<Block> sides = chestSides(block);
+        int[] entityIds;
+        if (sides.size() > 1) {
+            if (isDoorMaterial(block.getType())) {
+                // 门：上下两个真实半块状态（half=upper/lower）的展示实体并排，覆盖整扇门
+                entityIds = DisplayEntityUtil.spawnGlowDisplayDoor(block, sides.get(1), glowArgb(glowColor), holders);
             } else {
-                entityIds = new int[]{LootChestDisplay.spawnGlowDisplay(block, glowArgb(glowColor), glowMatched.get(loc))};
+                // 双箱：左右两个真实方块状态（type=left/right）的展示实体并排，还原双箱外观
+                entityIds = DisplayEntityUtil.spawnGlowDisplayDouble(block, sides.get(1), glowArgb(glowColor), holders);
             }
-            glowEntities.put(loc, entityIds);
+        } else {
+            entityIds = new int[]{DisplayEntityUtil.spawnGlowDisplay(block, glowArgb(glowColor), holders)};
+        }
+        glowEntities.put(loc, entityIds);
+    }
+
+    /** 门 open 状态变化时：立即销毁旧发光实体，5 tick 后按最新门状态重新生成（转动动画期间无实体，避免静态实体与动画错位）；非门或无变化跳过。 */
+    private void syncDoorGlowState(BlockLocation loc) {
+        World world = loc.toWorld();
+        if (world == null) {
+            return;
+        }
+        Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
+        if (!isDoorMaterial(block.getType())) {
+            return;
+        }
+        if (!(block.getState().getBlockData() instanceof org.bukkit.block.data.type.Door doorData)) {
+            return;
+        }
+        Boolean lastOpen = doorGlowOpen.get(loc);
+        if (lastOpen == null) {
+            // 首次登记（实体刚生成）：只记录当前 open 状态，不视为变化——
+            // 否则生成后的下一轮对账会被误判为"转动"而立即销毁重生，造成从范围外进入时闪烁
+            doorGlowOpen.put(loc, doorData.isOpen());
+            return;
+        }
+        if (lastOpen == doorData.isOpen()) {
+            return;
+        }
+        doorGlowOpen.put(loc, doorData.isOpen());
+        // 立即销毁旧实体（此时门转动动画开始），等待动画播完重新生成
+        int[] entityIds = glowEntities.remove(loc);
+        if (entityIds != null) {
+            DisplayEntityUtil.destroyEntity(entityIds);
+        }
+        // DOOR_SYNC_DELAY_TICKS 后重生：玩家仍持有匹配钥匙（仍在匹配集合）且未打开/未生成时，
+        // 按真实方块最新状态重新生成（spawnGlowDisplayDoor 读取 open/hinge，无需刷新已有实体）
+        BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            pendingDoorSync.remove(loc);
+            Set<UUID> holders = glowMatched.get(loc);
+            if (holders != null && !openChests.contains(loc) && !glowEntities.containsKey(loc)) {
+                spawnGlowEntities(loc, holders, config.getKeyGlowColor());
+            }
+        }, DOOR_SYNC_DELAY_TICKS);
+        BukkitTask old = pendingDoorSync.put(loc, task);
+        if (old != null) {
+            old.cancel();
         }
     }
 
@@ -181,8 +248,14 @@ public class KeyGlowTask extends BukkitRunnable {
         }
         int[] entityIds = glowEntities.remove(key);
         if (entityIds != null) {
-            LootChestDisplay.destroyEntity(entityIds);
+            DisplayEntityUtil.destroyEntity(entityIds);
+            doorGlowOpen.remove(key);
             openChests.add(key);
+        }
+        // 发光实体已移除：取消该位置的延迟刷新任务，避免任务执行时对已销毁实体发包
+        BukkitTask doorTask = pendingDoorSync.remove(key);
+        if (doorTask != null) {
+            doorTask.cancel();
         }
     }
 
@@ -214,7 +287,10 @@ public class KeyGlowTask extends BukkitRunnable {
             }
         }
         glowEntities.clear();
-        LootChestDisplay.destroyEntity(ids.stream().mapToInt(Integer::intValue).toArray());
+        doorGlowOpen.clear();
+        pendingDoorSync.values().forEach(BukkitTask::cancel);
+        pendingDoorSync.clear();
+        DisplayEntityUtil.destroyEntity(ids.stream().mapToInt(Integer::intValue).toArray());
     }
 
     @Override
@@ -241,7 +317,7 @@ public class KeyGlowTask extends BukkitRunnable {
         return token.equals(current);
     }
 
-    /** 返回方块及双箱对侧（双箱返回两侧、普通箱子返回自身），供粒子与发光覆盖整个容器。 */
+    /** 返回方块及其"另一半"（双箱左右 / 门上下半，普通方块返回自身），供粒子与发光覆盖整个结构。 */
     private List<Block> chestSides(Block block) {
         List<Block> sides = new ArrayList<>();
         sides.add(block);
@@ -257,7 +333,34 @@ public class KeyGlowTask extends BukkitRunnable {
                     }
                 }
             }
+        } else {
+            // 门：上下半一体，发光/粒子需覆盖整扇门
+            Block other = doorCounterpart(block);
+            if (other != null) {
+                sides.add(other);
+            }
         }
         return sides;
+    }
+
+    /** 门的另一半（上下半）；非门方块或另一半缺失时返回 null。 */
+    private Block doorCounterpart(Block block) {
+        if (!isDoorMaterial(block.getType())) {
+            return null;
+        }
+        Block up = block.getRelative(org.bukkit.block.BlockFace.UP);
+        Block down = block.getRelative(org.bukkit.block.BlockFace.DOWN);
+        if (up.getType() == block.getType()) {
+            return up;
+        }
+        if (down.getType() == block.getType()) {
+            return down;
+        }
+        return null;
+    }
+
+    /** 是否为门方块（木门/铁门等上下半一体的 *_DOOR；陷阱门 *_TRAPDOOR 不在此列）。 */
+    private boolean isDoorMaterial(Material material) {
+        return material != null && material.name().endsWith("_DOOR") && !material.name().endsWith("_TRAPDOOR");
     }
 }

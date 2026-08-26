@@ -15,6 +15,7 @@ import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 机关转轮玩法：背景上重叠 A（上）/B（下）两图，A/D 调 A、W 转 B；
@@ -34,6 +35,8 @@ public class TumblerBarSession extends MiniGameSession {
 
     /** 机关 A 当前状态（0..aStates-1）。 */
     private int stateA;
+    /** 本会话可解锁的 A 状态：unlock-a 配置为 -1 时每次撬锁随机选取，否则取配置值。 */
+    private final int unlockA;
     /** 机关 B 当前状态（0..bStates-1）。 */
     private int stateB;
     /** 已按 W 锁定 A、转动 B 阶段。 */
@@ -52,6 +55,9 @@ public class TumblerBarSession extends MiniGameSession {
     public TumblerBarSession(MiniGameContext context) {
         super(context);
         this.barConfig = TumblerBarConfig.from(context.getConfig().getSection(), gameManager.getPlugin().getLogger());
+        this.unlockA = barConfig.isRandomUnlockA()
+                ? ThreadLocalRandom.current().nextInt(barConfig.getAStates())
+                : barConfig.getUnlockA();
         this.stateA = barConfig.getInitialA();
         this.wReleased = true;
     }
@@ -96,7 +102,7 @@ public class TumblerBarSession extends MiniGameSession {
 
     /** B 可到达的最高状态：仅当 A 处于可解锁状态时可达最终状态。 */
     private int bMaxReachable() {
-        return barConfig.getBStates() - 1 - Math.abs(stateA - barConfig.getUnlockA());
+        return barConfig.getBStates() - 1 - Math.abs(stateA - unlockA);
     }
 
     @Override
@@ -142,8 +148,17 @@ public class TumblerBarSession extends MiniGameSession {
         }
         lastInputDirection = dir;
         if (stepCooldown >= barConfig.getMoveInterval()) {
+            int previous = stateA;
             stateA = Math.max(0, Math.min(barConfig.getAStates() - 1, stateA + dir));
             stepCooldown = 0;
+            if (stateA != previous) {
+                // A 转动声音：转到可解锁状态播放特殊提示音，其余状态播放普通转动音
+                if (stateA == unlockA) {
+                    barConfig.getAUnlockSound().play(player);
+                } else {
+                    barConfig.getAMoveSound().play(player);
+                }
+            }
         }
     }
 
@@ -162,6 +177,8 @@ public class TumblerBarSession extends MiniGameSession {
         int max = bMaxReachable();
         if (stateB < max) {
             stateB++;
+            // B 转动声音（每格一声，连续转动时有节奏反馈）
+            barConfig.getBMoveSound().play(player);
         }
         if (stateB >= max) {
             if (max == barConfig.getBFinal()) {
@@ -220,44 +237,50 @@ public class TumblerBarSession extends MiniGameSession {
     private String buildStatusText() {
         String aTag;
         if (failAnimTicks > 0) {
-            aTag = ChatColor.RED + "特殊";
-        } else if (stateA == barConfig.getUnlockA()) {
-            aTag = ChatColor.GREEN + "可解锁";
+            aTag = ChatColor.RED + Messages.TUMBLER_DAMAGED;
+        } else if (stateA == unlockA) {
+            aTag = ChatColor.GREEN + Messages.TUMBLER_ALIGNED;
         } else {
-            aTag = ChatColor.GRAY + "未对准";
+            aTag = ChatColor.GRAY + Messages.TUMBLER_MISALIGNED;
         }
         return ChatColor.AQUA + "A:" + stateA + "[" + aTag + ChatColor.AQUA + "] "
                 + ChatColor.BLUE + "B:" + stateB + ChatColor.DARK_AQUA + "/" + barConfig.getBFinal()
-                + ChatColor.GOLD + "  尝试 " + attempts + "/" + barConfig.getMaxAttempts();
+                + ChatColor.GOLD + "  " + Messages.ATTEMPTS_LABEL + " " + attempts + "/" + barConfig.getMaxAttempts();
     }
 
-    /** ASCII 条渲染（默认）：背景为白色竖线，A 位置黄色（宽度 = tumbler-width，失败动画红色）、B 位置绿色数字。 */
+    /** ASCII 条渲染（默认）：不渲染背景格子（background-length 仅 bitmap 模式使用），
+     *  条长自动覆盖 A/B 所在位置，空白处以空格占位保持布局；A 位置黄色（宽度 = tumbler-width，失败动画红色）、B 位置绿色数字。 */
     private void sendAsciiBar() {
-        int cellPx = 8;
-        int aCell = barConfig.getAOffset() / cellPx;
-        int bCell = barConfig.getBOffset() / cellPx;
-        int widthCells = barConfig.getTumblerWidth();
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < barConfig.getBackgroundLength(); i++) {
-            if (i >= aCell && i < aCell + widthCells) {
-                if (i == aCell) {
-                    sb.append(failAnimTicks > 0 ? ChatColor.RED : ChatColor.YELLOW).append('A');
-                } else {
-                    sb.append(failAnimTicks > 0 ? ChatColor.RED : ChatColor.YELLOW).append('─');
-                }
-            } else if (i >= bCell && i < bCell + widthCells) {
-                if (i == bCell) {
-                    sb.append(ChatColor.GREEN).append((char) ('0' + Math.min(stateB, 9)));
-                } else {
-                    sb.append(ChatColor.GREEN).append('─');
-                }
-            } else {
-                sb.append(ChatColor.WHITE).append('|');
-            }
-        }
+        //暂时注释掉，不用这个了；但也许以后会有用
+//        int cellPx = 8;
+//        int aCell = barConfig.getAOffset() / cellPx;
+//        int bCell = barConfig.getBOffset() / cellPx;
+//        int widthCells = barConfig.getTumblerWidth();
+//        // 条长 = A/B 中最右侧的位置 + 宽度，自动覆盖两个机关；不再依赖 background-length
+//        int lengthCells = Math.max(aCell, bCell) + widthCells;
+//        StringBuilder sb = new StringBuilder();
+//        for (int i = 0; i < lengthCells; i++) {
+//            if (i >= aCell && i < aCell + widthCells) {
+//                if (i == aCell) {
+//                    sb.append(failAnimTicks > 0 ? ChatColor.RED : ChatColor.YELLOW).append('A');
+//                } else {
+//                    sb.append(failAnimTicks > 0 ? ChatColor.RED : ChatColor.YELLOW).append('─');
+//                }
+//            } else if (i >= bCell && i < bCell + widthCells) {
+//                if (i == bCell) {
+//                    sb.append(ChatColor.GREEN).append((char) ('0' + Math.min(stateB, 9)));
+//                } else {
+//                    sb.append(ChatColor.GREEN).append('─');
+//                }
+//            } else {
+//                // 空白占位：不渲染背景格子
+//                sb.append(' ');
+//            }
+//        }
         // stay 用较大值（5 秒）并逐 tick 重置：客户端 titleTime 逐 tick 递减，若 stay 过小
         // （与服务端 tick 错位时）会短暂归零导致 title/subtitle 一起消失，表现为条整体闪动
-        player.sendTitle(buildStatusText(), sb.toString(), 0, 100, 0);
+//        player.sendTitle(buildStatusText(), sb.toString(), 0, 100, 0);
+        player.sendTitle(buildStatusText(),null, 0, 100, 0);
     }
 
     /**

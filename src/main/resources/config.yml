@@ -1,4 +1,4 @@
-﻿# 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
+# 配置文件版本：用于自动升级，低于模板版本时追加新增配置项（勿手动修改）
 config-version: 1
 # 是否输出调试日志
 debug: false
@@ -45,16 +45,146 @@ game:
   # --- tumbler-bar 玩法特有参数（其他玩法不使用）：A/D 调 A、W 转 B，仅 A 处于可解锁状态时 B 可达最终状态即成功 ---
   a-states: 4          # 机关 A 状态数（每个状态另有对应特殊态，尝试失败时显示）
   initial-a: 0         # 尝试失败复位后 A 的初始状态
-  unlock-a: 1          # 可解锁的 A 状态（仅 A 在此状态时 B 能转到最终状态）
+  unlock-a: 1          # 可解锁的 A 状态（仅 A 在此状态时 B 能转到最终状态；-1 = 每次撬锁随机选取）
   b-states: 5          # 机关 B 状态数（状态从 0 计）
   b-final: 4           # B 最终状态（达到即成功；默认 b-states-1，配置为其他值会被钳制并告警）
   a-offset: 16         # A 左上角相对背景左端的水平像素位置
   b-offset: 80         # B 左上角相对背景左端的水平像素位置
-  background-length: 4 # 背景总长度（格）
+  background-length: 4 # 背景总长度（格，仅 bitmap 模式使用；ascii 模式条长自动覆盖 A/B 位置）
   max-attempts: 3      # 最大尝试次数（超限判撬锁失败）
   tumbler-width: 3     # 机关 A/B 状态图宽度（格，仅 ascii 模式显示宽度；bitmap 模式图标固定 32px）
   # 说明：move-interval（A/D 调 A 步进）与 render-mode 与上方公共参数共用同一键，等级配置中按需显式指定
   #       tumbler 的 move-interval 代码默认 6（上方公共默认 10 用于 moving-bar/rhythm-bar）
+  # --- 音效配置（key: 音效名，支持 "minecraft:命名空间路径" 或 Bukkit 短名如 "note.pling"；
+  #      source: 声音类别 master/music/record/weather/block/hostile/neutral/player/ambient/voice；
+  #      volume 音量、pitch 音调；key 留空或删除节点即关闭对应音效；等级配置可覆盖单个节点） ---
+  sounds:
+    # 撬锁成功 / 失败（所有玩法通用）
+    success:
+      key: "minecraft:block.note_block.pling"
+      source: "master"
+      volume: 1.0
+      pitch: 1.5
+    fail:
+      key: "minecraft:block.note_block.bass"
+      source: "master"
+      volume: 1.0
+      pitch: 0.8
+    # moving-bar / rhythm-bar：游标移动一格（骑乘模式按 A/D 移动同样生效）
+    move:
+      key: "minecraft:block.note_block.hat"
+      source: "master"
+      volume: 0.6
+      pitch: 1.2
+    # moving-bar / rhythm-bar：点击命中判定区/判定点
+    hit:
+      key: "minecraft:block.note_block.pling"
+      source: "master"
+      volume: 0.8
+      pitch: 1.8
+    # tumbler-bar：A 转动（未对准可解锁状态）
+    a-move:
+      key: "minecraft:block.note_block.hat"
+      source: "master"
+      volume: 0.6
+      pitch: 1.0
+    # tumbler-bar：A 转到可解锁状态（特殊提示音）
+    a-unlock:
+      key: "minecraft:block.note_block.pling"
+      source: "master"
+      volume: 1.0
+      pitch: 2.0
+    # tumbler-bar：B 转动
+    b-move:
+      key: "minecraft:block.note_block.snare"
+      source: "master"
+      volume: 0.7
+      pitch: 1.0
+
+# 上锁方块类型设置（仅允许对以下方块类型上锁，破坏/爆炸清理与卸锁目标判定同此列表）
+lock:
+  # 允许上锁的方块类型列表；非法项启动时记日志跳过，列表为空时回退默认（箱子和陷阱箱）
+  lockable-blocks:
+    - CHEST
+    - TRAPPED_CHEST
+    - acacia_door
+
+# 钥匙功能
+key:
+  # 是否启用钥匙卸锁功能（已配对钥匙 + 交互按键，卸下锁并返还锁物品；卸锁必须手持钥匙）
+  unlock-enabled: true
+  # 是否允许非上锁者手持配对钥匙卸锁；false（默认）时仅上锁者本人可卸锁
+  unlock-by-holder: false
+  # 是否启用钥匙配对功能（未配对钥匙 + 交互按键，由上锁者为钥匙配对）
+  pair-enabled: true
+  # 交互按键动作: LEFT / RIGHT
+  interaction-action: LEFT
+  # 交互按键是否必须潜行
+  interaction-sneak: true
+  # 打开上锁箱子是否必须手持钥匙；false 时背包中有钥匙即可
+  require-in-hand: true
+  # 手持与箱子配对值匹配的钥匙时，对应箱子粒子提示（粒子效果）
+  particle-enabled: true
+  # 粒子颜色（颜色名如 GOLD/RED/AQUA，或 #RRGGBB 十六进制）
+  particle-color: GOLD
+  # 粒子生效半径（方块，玩家与箱子距离在此范围内才播放粒子）
+  particle-radius: 8.0
+  # 手持与箱子配对值匹配的钥匙时，对应箱子发光提示（发光效果）
+  glow-enabled: true
+  # 发光颜色（颜色名如 GOLD/RED/AQUA，或 #RRGGBB 十六进制）
+  glow-color: GOLD
+  # 发光生效半径（方块，玩家与箱子距离在此范围内才发光）
+  glow-radius: 8.0
+
+# 掉落战利品箱设置（生物死亡后掉落物装入战利品箱，配置见 lootchest/ 文件夹）
+lootchest:
+  # 生物死亡是否保持原版掉落（默认开启；设为 false 后生物死亡不再直接掉落物品，而是生成战利品箱）
+  vanilla-drop: true
+  # 展示方式: display（展示实体，默认，由服务器发包渲染） / block（放置真实箱子方块）
+  display-type: display
+  # 玩家未拿完战利品时是否保留箱子（保留则之后可再次打开；取空后自动消失，默认开启）
+  keep: true
+  # 箱子未被开启的过期时间（秒）；0 表示不过期
+  expire-time: 600
+  # 箱子被开启后的过期时间（秒）；0 表示不过期
+  expire-time-opened: 300
+  # 与展示实体的交互判定距离（display 模式，方块）
+  interaction-range: 4.0
+  # 不生成战利品箱的世界名列表
+  worlds:
+    exclude: []
+
+# 各交互消息显示方式: message（聊天）/ actionbar（动作栏）/ title（标题）
+message-format:
+  pickingSuccess: title   # 撬锁成功
+  pickingFail: title      # 撬锁失败
+  pickingStart: title     # 开始撬锁
+  pickingCancel: title   # 取消撬锁
+  pickingInterrupt: title   # 撬锁被中断（受击/移动超范围）
+  lockPicked: actionbar   # 打开已被撬开的锁
+  pickingTimeout: title   # 撬锁超时
+  pickingCooldown: title  # 撬锁冷却
+  lockSuccess: title        # 上锁成功
+  blockLocked: actionbar      # 方块已上锁
+  lockNotLockable: message  # 方块不可上锁
+  unlockSuccess: message    # 卸锁成功
+  unlockConfirm: actionbar    # 卸锁确认
+  pairSuccess: message      # 配对成功
+  pairNotLocker: message    # 无法配对
+  keyNotMatched: actionbar    # 钥匙不匹配
+  keyChanged: actionbar       # 钥匙已更换
+  chestProtected: message    # 受保护箱子已卸锁
+  chestProtectedLockDenied: message    # 受保护箱子无法上锁
+  chestProtectedAccessDenied: message  # 受保护箱子无法操作
+  noPermission: message     # 无权限
+  playerOnly: message       # 仅玩家可用
+  playerNotFound: message   # 玩家不在线
+  invalidId: message        # 无效物品ID
+  invalidAmount: message    # 无效数量
+  giveSuccess: message      # 给予物品
+  setItemSuccess: message   # 设置物品成功
+  setItemNoItem: message    # 未手持物品
+  checkNotSpecial: message  # 非特殊物品
 
 # 位图渲染（资源包字体）设置：字体名与码位须与生成的资源包一致，非特殊需求勿修改
 font:
@@ -127,93 +257,9 @@ font:
     tumbler-tile: 48       # 机关转轮（tumbler-bar）背景格/A/B 图标尺寸（像素，48x48 方块；须与资源包 tumbler_bg/tumbler_a/tumbler_a_special/tumbler_b 一致）
     tumbler-png-height: 96 # tumbler 相关 PNG 高度（像素，须与资源包 PNG 高度一致）
     tumbler-height: 96     # bar.json 中 tumbler provider 的 height（渲染高度，像素）
-    # tumbler 条整体上下位置：以材质包 bar.json 为准，运行 build_resourcepack.ps1 时自动从 bar.json 同步到此处
+    # tumbler 条整体上下位置：以材质包 bar.json 为准.
     # 服务端仅读取该值用于计算/诊断；调整高度请直接改 bar.json 的 tumbler provider ascent（调大条下移、调小条上移，须 <= height）
-    # 改完运行 build_resourcepack.ps1 重建 zip，客户端完全重启游戏生效
-    tumbler-ascent: 48
+    tumbler-ascent: 64
     # 位图条整体水平平移（像素，正=右移、负=左移）：纯服务端渲染偏移，/reload 即生效，无需材质包
     # 垂直方向无法用配置调整：字幕渲染基线由客户端引擎硬编码，像素级垂直偏移只能改材质包 bar.json 的 ascent（见上）
     horizontal-offset: 0
-
-# 上锁方块类型设置（仅允许对以下方块类型上锁，破坏/爆炸清理与卸锁目标判定同此列表）
-lock:
-  # 允许上锁的方块类型列表；非法项启动时记日志跳过，列表为空时回退默认（箱子和陷阱箱）
-  lockable-blocks:
-    - CHEST
-    - TRAPPED_CHEST
-
-# 钥匙功能
-key:
-  # 是否启用钥匙卸锁功能（已配对钥匙 + 交互按键，卸下锁并返还锁物品；卸锁必须手持钥匙）
-  unlock-enabled: true
-  # 是否允许非上锁者手持配对钥匙卸锁；false（默认）时仅上锁者本人可卸锁
-  unlock-by-holder: false
-  # 是否启用钥匙配对功能（未配对钥匙 + 交互按键，由上锁者为钥匙配对）
-  pair-enabled: true
-  # 交互按键动作: LEFT / RIGHT
-  interaction-action: LEFT
-  # 交互按键是否必须潜行
-  interaction-sneak: true
-  # 打开上锁箱子是否必须手持钥匙；false 时背包中有钥匙即可
-  require-in-hand: true
-  # 手持与箱子配对值匹配的钥匙时，对应箱子粒子提示（粒子效果）
-  particle-enabled: true
-  # 粒子颜色（颜色名如 GOLD/RED/AQUA，或 #RRGGBB 十六进制）
-  particle-color: GOLD
-  # 粒子生效半径（方块，玩家与箱子距离在此范围内才播放粒子）
-  particle-radius: 8.0
-  # 手持与箱子配对值匹配的钥匙时，对应箱子发光提示（发光效果）
-  glow-enabled: true
-  # 发光颜色（颜色名如 GOLD/RED/AQUA，或 #RRGGBB 十六进制）
-  glow-color: GOLD
-  # 发光生效半径（方块，玩家与箱子距离在此范围内才发光）
-  glow-radius: 8.0
-
-# 掉落战利品箱设置（生物死亡后掉落物装入战利品箱，配置见 lootchest/ 文件夹）
-lootchest:
-  # 生物死亡是否保持原版掉落（默认开启；设为 false 后生物死亡不再直接掉落物品，而是生成战利品箱）
-  vanilla-drop: true
-  # 展示方式: display（展示实体，默认，由服务器发包渲染） / block（放置真实箱子方块）
-  display-type: display
-  # 玩家未拿完战利品时是否保留箱子（保留则之后可再次打开；取空后自动消失，默认开启）
-  keep: true
-  # 箱子未被开启的过期时间（秒）；0 表示不过期
-  expire-time: 600
-  # 箱子被开启后的过期时间（秒）；0 表示不过期
-  expire-time-opened: 300
-  # 与展示实体的交互判定距离（display 模式，方块）
-  interaction-range: 4.0
-  # 不生成战利品箱的世界名列表
-  worlds:
-    exclude: []
-
-# 各交互消息显示方式: message（聊天）/ actionbar（动作栏）/ title（标题）
-message-format:
-  pickingSuccess: title   # 撬锁成功
-  pickingFail: title      # 撬锁失败
-  pickingStart: title     # 开始撬锁
-  pickingCancel: title   # 取消撬锁
-  pickingInterrupt: title   # 撬锁被中断（受击/移动超范围）
-  pickingTimeout: title   # 撬锁超时
-  pickingCooldown: title  # 撬锁冷却
-  lockSuccess: title        # 上锁成功
-  chestLocked: actionbar      # 箱子已上锁
-  lockNotLockable: message  # 方块不可上锁
-  unlockSuccess: message    # 卸锁成功
-  unlockConfirm: actionbar    # 卸锁确认
-  pairSuccess: message      # 配对成功
-  pairNotLocker: message    # 无法配对
-  keyNotMatched: actionbar    # 钥匙不匹配
-  keyChanged: actionbar       # 钥匙已更换
-  chestProtected: message    # 受保护箱子已卸锁
-  chestProtectedLockDenied: message    # 受保护箱子无法上锁
-  chestProtectedAccessDenied: message  # 受保护箱子无法操作
-  noPermission: message     # 无权限
-  playerOnly: message       # 仅玩家可用
-  playerNotFound: message   # 玩家不在线
-  invalidId: message        # 无效物品ID
-  invalidAmount: message    # 无效数量
-  giveSuccess: message      # 给予物品
-  setItemSuccess: message   # 设置物品成功
-  setItemNoItem: message    # 未手持物品
-  checkNotSpecial: message  # 非特殊物品

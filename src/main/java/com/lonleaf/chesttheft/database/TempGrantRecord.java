@@ -5,10 +5,10 @@ import com.lonleaf.chesttheft.model.BlockLocation;
 import java.util.UUID;
 
 /**
- * 一条临时授权记录（领地类 / WorldGuard / NoBuildPlus 打开容器的临时权限）：
- * 插件崩溃后启动时依据表中记录清理残留授权，防止成员/权限混乱。
+ * 临时授权数据库记录：崩溃后启动清理（cleanupStale）依据该记录恢复各保护插件的残留授权。
+ * extra 为授权前的原状态序列化（各适配器自定义格式，用于恢复原值）。
  */
-public final class TempGrantRecord {
+public class TempGrantRecord {
 
     private final String pluginType;
     private final BlockLocation location;
@@ -22,22 +22,18 @@ public final class TempGrantRecord {
         this.extra = extra;
     }
 
-    /** 产生该记录的插件类型（与保护监听器的 pluginType() 对应）。 */
     public String getPluginType() {
         return pluginType;
     }
 
-    /** 临时授权对应的容器位置。 */
     public BlockLocation getLocation() {
         return location;
     }
 
-    /** 被授予临时权限的玩家。 */
     public UUID getPlayerUuid() {
         return playerUuid;
     }
 
-    /** 撤销所需的插件特定数据（各插件序列化的授权信息），可为空字符串。 */
     public String getExtra() {
         return extra;
     }

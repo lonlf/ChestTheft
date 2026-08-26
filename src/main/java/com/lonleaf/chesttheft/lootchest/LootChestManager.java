@@ -3,6 +3,7 @@ package com.lonleaf.chesttheft.lootchest;
 import com.lonleaf.chesttheft.ChestTheft;
 import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.config.PluginConfig;
+import com.lonleaf.chesttheft.display.DisplayEntityUtil;
 import com.lonleaf.chesttheft.model.BlockLocation;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -88,8 +89,8 @@ public class LootChestManager {
         fillInventory(inventory, items);
         Material material = profile != null ? profile.getDisplayMaterial() : Material.CHEST;
         // display 实体仅存在于客户端，服务端只有实体 ID：BlockDisplay 渲染箱子，Interaction 提供可点击 hitbox
-        int displayId = LootChestDisplay.spawnDisplay(location, material);
-        int interactId = LootChestDisplay.spawnInteraction(location);
+        int displayId = DisplayEntityUtil.spawnDisplay(location, material);
+        int interactId = DisplayEntityUtil.spawnInteraction(location);
         LootChest chest = new LootChest(location, inventory, profile);
         chest.setDisplayEntityId(displayId);
         chest.setInteractEntityId(interactId);
@@ -201,7 +202,7 @@ public class LootChestManager {
         if (chest.getDisplayEntityId() != -1) {
             displayEntityIds.remove(chest.getDisplayEntityId());
             displayEntityIds.remove(chest.getInteractEntityId());
-            LootChestDisplay.destroyEntity(
+            DisplayEntityUtil.destroyEntity(
                     chest.getDisplayEntityId(), chest.getInteractEntityId());
         }
         if (chest.getChestBlock() != null) {
@@ -244,7 +245,7 @@ public class LootChestManager {
                     || !chest.getLocation().getWorld().equals(player.getWorld())) {
                 continue;
             }
-            LootChestDisplay.respawnTo(
+            DisplayEntityUtil.respawnTo(
                     chest.getDisplayEntityId(), chest.getInteractEntityId(), player);
         }
     }
@@ -277,7 +278,7 @@ public class LootChestManager {
         }
         for (LootChest chest : activeChests.values()) {
             if (chest.getDisplayEntityId() != -1) {
-                LootChestDisplay.destroyEntity(
+                DisplayEntityUtil.destroyEntity(
                         chest.getDisplayEntityId(), chest.getInteractEntityId());
             }
         }

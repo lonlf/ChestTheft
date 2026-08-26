@@ -16,12 +16,17 @@ public class GameConfig {
     private final int accessOnceWindowSeconds;
     private final boolean interruptDamage;
     private final double interruptMoveRange;
+    /** 撬锁成功音效（所有玩法通用）。 */
+    private final SoundConfig successSound;
+    /** 撬锁失败音效（所有玩法通用）。 */
+    private final SoundConfig failSound;
     /** 原始配置段：玩法特有参数由各玩法配置类解析；null 表示全部使用默认值。 */
     private final ConfigurationSection section;
 
     private GameConfig(String name, String gameType, int timeoutSeconds, int cooldownSeconds,
                        int accessDurationSeconds, int accessOnceWindowSeconds,
-                       boolean interruptDamage, double interruptMoveRange, ConfigurationSection section) {
+                       boolean interruptDamage, double interruptMoveRange,
+                       SoundConfig successSound, SoundConfig failSound, ConfigurationSection section) {
         this.name = name;
         this.gameType = gameType;
         this.timeoutSeconds = timeoutSeconds;
@@ -30,12 +35,15 @@ public class GameConfig {
         this.accessOnceWindowSeconds = accessOnceWindowSeconds;
         this.interruptDamage = interruptDamage;
         this.interruptMoveRange = interruptMoveRange;
+        this.successSound = successSound;
+        this.failSound = failSound;
         this.section = section;
     }
 
     /** 从配置段解析小游戏公共配置，缺失键使用默认值并做范围约束（null 表示全用默认值）。
      *  等级配置通常已由 LockConfigManager 与默认配置合并，缺失键即继承默认配置的值。 */
     public static GameConfig from(ConfigurationSection section) {
+        ConfigurationSection sounds = section == null ? null : section.getConfigurationSection("sounds");
         return new GameConfig(
                 section == null ? null : section.getString("name"),
                 section == null ? "moving-bar" : section.getString("game-type", "moving-bar"),
@@ -45,6 +53,8 @@ public class GameConfig {
                 Math.max(1, section == null ? 60 : section.getInt("access-once-window", 60)),
                 section == null || section.getBoolean("interrupt-damage", true),
                 section == null ? 3.0 : section.getDouble("interrupt-move-range", 3.0),
+                SoundConfig.from(sounds == null ? null : sounds.getConfigurationSection("success")),
+                SoundConfig.from(sounds == null ? null : sounds.getConfigurationSection("fail")),
                 section
         );
     }
@@ -85,6 +95,16 @@ public class GameConfig {
     /** 撬锁中移动超过该范围（方块）中断撬锁；0 或负值表示不限制移动。 */
     public double getInterruptMoveRange() {
         return interruptMoveRange;
+    }
+
+    /** 撬锁成功音效（所有玩法通用）。 */
+    public SoundConfig getSuccessSound() {
+        return successSound;
+    }
+
+    /** 撬锁失败音效（所有玩法通用）。 */
+    public SoundConfig getFailSound() {
+        return failSound;
     }
 
     /** 原始配置段：玩法特有参数由各玩法配置类解析；null 表示全部使用默认值。 */

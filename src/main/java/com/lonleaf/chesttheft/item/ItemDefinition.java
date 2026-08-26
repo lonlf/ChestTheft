@@ -19,10 +19,12 @@ public class ItemDefinition {
     private final List<String> lore;
     /** 锁物品自带的多个触发器配置段（triggers.<id>.type/actions），未配置时为 null。 */
     private final ConfigurationSection triggers;
+    /** 上锁完成后自动给予的配对钥匙物品 ID；未配置（null/空）时不给予。 */
+    private final String giveKey;
 
     private ItemDefinition(String id, ItemType type, String name, Material material,
                            Integer customModelData, int level, List<String> lore,
-                           ConfigurationSection triggers) {
+                           ConfigurationSection triggers, String giveKey) {
         this.id = id;
         this.type = type;
         this.name = name;
@@ -31,6 +33,7 @@ public class ItemDefinition {
         this.level = level;
         this.lore = lore;
         this.triggers = triggers;
+        this.giveKey = giveKey;
     }
 
     /** 从配置段解析物品定义；type 缺失或非法时返回 null（由调用方跳过并告警）。 */
@@ -54,7 +57,8 @@ public class ItemDefinition {
         int level = Math.max(0, section.getInt("level", 0));
         List<String> lore = section.getStringList("lore");
         ConfigurationSection triggers = section.getConfigurationSection("triggers");
-        return new ItemDefinition(id, type, name, material, customModelData, level, lore, triggers);
+        String giveKey = section.getString("give-key");
+        return new ItemDefinition(id, type, name, material, customModelData, level, lore, triggers, giveKey);
     }
 
     public String getId() {
@@ -91,5 +95,10 @@ public class ItemDefinition {
     /** 锁物品自带的多个触发器配置段，未配置时返回 null。 */
     public ConfigurationSection getTriggers() {
         return triggers;
+    }
+
+    /** 上锁完成后自动给予的配对钥匙物品 ID；未配置（null/空）时不给予。 */
+    public String getGiveKey() {
+        return giveKey;
     }
 }

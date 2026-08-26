@@ -130,12 +130,12 @@
   render-mode: ascii   # 测试可改 bitmap（需安装新材质包）
   a-states: 5          # 机关 A 状态数（每个状态另有对应特殊态）
   initial-a: 0         # 尝试失败复位后 A 的初始状态
-  unlock-a: 1          # 可解锁的 A 状态（仅 A 在此状态时 B 能转到最终状态）
+  unlock-a: 1          # 可解锁的 A 状态（仅 A 在此状态时 B 能转到最终状态；-1 = 每次撬锁随机选取）
   b-states: 5          # 机关 B 状态数（0~4）
   b-final: 4           # B 最终状态（达到即成功）
   a-offset: 224           # A 在背景内的水平位置（px，居中 224；垂直位置由资源包 ascent 固定为上部）
   b-offset: 224           # B 在背景内的水平位置（px，居中 224；垂直位置由资源包 ascent 固定为下部）
-  background-length: 15   # 背景总格数（每格 = 32px；背景为一张 480x96 完整大图）
+  background-length: 15   # 背景总格数（每格 = 32px；背景为一张 480x96 完整大图；仅 bitmap 模式使用）
   tumbler-width: 3        # 机关 A/B 状态图宽度（格，仅 ascii 模式显示宽度；bitmap 模式图标固定 32px）
   max-attempts: 3      # 最大尝试数（超限判撬锁失败）
   move-interval: 6     # A/D 调 A 的步进间隔（tick）
@@ -151,12 +151,12 @@
   render-mode: bitmap
   a-states: 5          # 机关 A 状态数（每个状态另有对应特殊态）
   initial-a: 0         # 尝试失败复位后 A 的初始状态
-  unlock-a: 1          # 可解锁的 A 状态（仅 A 在此状态时 B 能转到最终状态）
+  unlock-a: 1          # 可解锁的 A 状态（仅 A 在此状态时 B 能转到最终状态；-1 = 每次撬锁随机选取）
   b-states: 5          # 机关 B 状态数（0~4）
   b-final: 4           # B 最终状态（达到即成功）
   a-offset: 24         # A 左上角相对背景左端的水平位置（px；24 = (96-48)/2 与 B 同位居中；垂直位置由 PNG 内留白固定为上部）
   b-offset: 24         # B 左上角相对背景左端的水平位置（px；与 A 同位，上下锁芯水平对齐；垂直位置由 PNG 内留白固定为下部）
-  background-length: 2 # 背景总格数（每格 = 48px；背景为一张 96x96 整图，故为 2 格）
+  background-length: 2 # 背景总格数（每格 = 48px；背景为一张 96x96 整图，故为 2 格；仅 bitmap 模式使用）
   tumbler-width: 3        # 机关 A/B 状态图宽度（格，仅 ascii 模式显示宽度；bitmap 模式图标固定 48px）
   max-attempts: 3      # 最大尝试数（超限判撬锁失败）
   move-interval: 6     # A/D 调 A 的步进间隔（tick）

@@ -1,6 +1,7 @@
 # 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
 # 添加自定义物品：复制一份定义并修改 ID（如 lock002）与 name/material 等即可
 # level: 锁等级（数字，对应 gamelevel/lock.yml 中的等级键），未配置时撬锁使用默认难度
+# give-key: 上锁完成后自动给予配对此锁的钥匙物品 ID（如 key001）；省略或留空则不给予
 # triggers: 锁物品自带的多个触发器（可选）。每个触发器以 id 为主键，支持两种形式：
 #   1. 引用形式：值为 trigger 文件夹中已配置的全局触发器 id 列表，按被引用触发器自身的 type 触发
 #   2. 内嵌定义形式：含 type（success/fail/cancel/interrupted/lock/key-open/key-pair）与 actions
@@ -12,6 +13,7 @@ lock001:
   material: IRON_INGOT
   customModelData: 13085
   level: 1
+  # give-key: key001
   lore:
     - "This is a example lock001"
     - "Right click an unlocked chest to lock it."
@@ -24,4 +26,4 @@ lock001:
       actions:
         msg:
           type: message
-          value: "&c这把锁纹丝不动……"
+          value: "&cTest trigger message lock001-fail."

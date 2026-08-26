@@ -1,6 +1,7 @@
 package com.lonleaf.chesttheft.minigame.tumblerbar;
 
 import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.config.SoundConfig;
 import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.logging.Logger;
@@ -25,7 +26,7 @@ public class TumblerBarConfig {
     private final int aOffset;
     /** B 左上角相对背景左端的水平像素位置。 */
     private final int bOffset;
-    /** 背景总长度（格，位图模式下每格 = 切片宽像素）。 */
+    /** 背景总长度（格，仅 bitmap 模式使用；ascii 模式条长自动覆盖 A/B 位置）。 */
     private final int backgroundLength;
     /** 最大尝试次数：累计失败达到后判定撬锁失败。 */
     private final int maxAttempts;
@@ -35,10 +36,17 @@ public class TumblerBarConfig {
     private final int tumblerWidth;
     /** 渲染方式：ascii（默认，无需材质包）/ bitmap（需安装材质包）。 */
     private final String renderMode;
+    /** A 转动音效（未对准可解锁状态）。 */
+    private final SoundConfig aMoveSound;
+    /** A 转到可解锁状态的特殊音效。 */
+    private final SoundConfig aUnlockSound;
+    /** B 转动音效。 */
+    private final SoundConfig bMoveSound;
 
     private TumblerBarConfig(int aStates, int initialA, int unlockA, int bStates, int bFinal,
                              int aOffset, int bOffset, int backgroundLength,
-                             int maxAttempts, int moveInterval, int tumblerWidth, String renderMode) {
+                             int maxAttempts, int moveInterval, int tumblerWidth, String renderMode,
+                             SoundConfig aMoveSound, SoundConfig aUnlockSound, SoundConfig bMoveSound) {
         this.aStates = aStates;
         this.initialA = initialA;
         this.unlockA = unlockA;
@@ -51,6 +59,9 @@ public class TumblerBarConfig {
         this.moveInterval = moveInterval;
         this.tumblerWidth = tumblerWidth;
         this.renderMode = renderMode;
+        this.aMoveSound = aMoveSound;
+        this.aUnlockSound = aUnlockSound;
+        this.bMoveSound = bMoveSound;
     }
 
     /** 从配置段解析玩法特有参数，缺失键使用默认值并做范围约束（null 表示全用默认值）。 */
@@ -84,8 +95,13 @@ public class TumblerBarConfig {
         int moveInterval = Math.max(1, section == null ? 6 : section.getInt("move-interval", 6));
         int tumblerWidth = Math.max(1, section == null ? 3 : section.getInt("tumbler-width", 3));
         String renderMode = section == null ? "ascii" : section.getString("render-mode", "ascii");
+        ConfigurationSection sounds = section == null ? null : section.getConfigurationSection("sounds");
+        SoundConfig aMoveSound = SoundConfig.from(sounds == null ? null : sounds.getConfigurationSection("a-move"));
+        SoundConfig aUnlockSound = SoundConfig.from(sounds == null ? null : sounds.getConfigurationSection("a-unlock"));
+        SoundConfig bMoveSound = SoundConfig.from(sounds == null ? null : sounds.getConfigurationSection("b-move"));
         return new TumblerBarConfig(aStates, initialA, unlockA, bStates, bFinal,
-                aOffset, bOffset, backgroundLength, maxAttempts, moveInterval, tumblerWidth, renderMode);
+                aOffset, bOffset, backgroundLength, maxAttempts, moveInterval, tumblerWidth, renderMode,
+                aMoveSound, aUnlockSound, bMoveSound);
     }
 
     private static int clamp(int min, int max, int value) {
@@ -102,7 +118,12 @@ public class TumblerBarConfig {
         return initialA;
     }
 
-    /** 可解锁的 A 状态。 */
+    /** 可解锁的 A 状态；unlock-a 为 -1 时返回 true（每次会话随机）。 */
+    public boolean isRandomUnlockA() {
+        return unlockA < 0;
+    }
+
+    /** 可解锁的 A 状态（unlock-a 为 -1 时该值无意义，会话内另行随机）。 */
     public int getUnlockA() {
         return unlockA;
     }
@@ -150,5 +171,20 @@ public class TumblerBarConfig {
     /** 是否使用位图渲染（render-mode: bitmap）；否则使用 ASCII。 */
     public boolean isBitmap() {
         return "bitmap".equalsIgnoreCase(renderMode);
+    }
+
+    /** A 转动音效（未对准可解锁状态）。 */
+    public SoundConfig getAMoveSound() {
+        return aMoveSound;
+    }
+
+    /** A 转到可解锁状态的特殊音效。 */
+    public SoundConfig getAUnlockSound() {
+        return aUnlockSound;
+    }
+
+    /** B 转动音效。 */
+    public SoundConfig getBMoveSound() {
+        return bMoveSound;
     }
 }

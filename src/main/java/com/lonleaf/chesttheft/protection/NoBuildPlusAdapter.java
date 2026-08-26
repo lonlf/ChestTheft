@@ -1,6 +1,5 @@
 package com.lonleaf.chesttheft.protection;
 
-import com.lonleaf.chesttheft.database.Database;
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -14,18 +13,39 @@ import p1xel.nobuildplus.world.WorldManager;
 import java.util.UUID;
 
 /**
- * NoBuildPlus 保护集成（软依赖）：世界级 flag 保护，打开前临时授予世界 bypass 权限。
- * 权限附件不持久化（重启即清）。
+ * NoBuildPlus 保护适配器（软依赖）：世界级 flag 保护，打开前事件内临时授予世界 bypass 权限。
+ * 权限附件为纯内存态（重启即清），不写库不持久化。
  */
-public class NoBuildPlusProtectionListener extends TempAccessListener {
+public class NoBuildPlusAdapter extends TempAccessAdapter {
 
-    public NoBuildPlusProtectionListener(Plugin plugin, Database database) {
-        super(plugin, database);
+    public NoBuildPlusAdapter(Plugin plugin) {
+        super(plugin);
     }
 
     @Override
-    protected String pluginType() {
+    public String pluginType() {
         return "nobuildplus";
+    }
+
+    @Override
+    public boolean isActive() {
+        return Bukkit.getPluginManager().getPlugin("NoBuildPlus") != null;
+    }
+
+    @Override
+    public boolean isProtected(Block block) {
+        return ProtectionUtil.isNoBuildPlusProtected(block);
+    }
+
+    @Override
+    public UUID getOwnerUUID(Block block) {
+        return null; // 世界级 flag 保护无所有者概念
+    }
+
+    /** 世界 bypass 权限为纯内存附件（重启即清），不落库。 */
+    @Override
+    protected boolean persistGrant(TempGrant grant) {
+        return false;
     }
 
     @Override
@@ -35,12 +55,12 @@ public class NoBuildPlusProtectionListener extends TempAccessListener {
 
     @Override
     protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
-        // 权限附件随服务器重启自动清空，无需恢复
+        // 附件型不落库，无记录可恢复
     }
 
     @Override
     protected TempGrant prepare(Block block, Player player) {
-        if (Bukkit.getPluginManager().getPlugin("NoBuildPlus") == null) {
+        if (!isActive()) {
             return null;
         }
         String worldName = block.getWorld().getName();

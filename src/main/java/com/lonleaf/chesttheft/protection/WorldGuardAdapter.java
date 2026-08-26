@@ -17,18 +17,33 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * WorldGuard 区域保护集成（软依赖）：打开前临时加入区域 members，关闭/退出时移除。
- * 授权区域列表入库，崩溃后启动清理移除成员。
+ * WorldGuard 区域保护适配器（软依赖）：打开前事件内临时加入区域 members，收回（下一 tick）时移除。
+ * members 为持久化写入（区域文件），授权前落库（记录区域 ID 列表），崩溃后启动清理移除成员。
  */
-public class WorldGuardProtectionListener extends TempAccessListener {
+public class WorldGuardAdapter extends TempAccessAdapter {
 
-    public WorldGuardProtectionListener(Plugin plugin, Database database) {
+    public WorldGuardAdapter(Plugin plugin, Database database) {
         super(plugin, database);
     }
 
     @Override
-    protected String pluginType() {
+    public String pluginType() {
         return "worldguard";
+    }
+
+    @Override
+    public boolean isActive() {
+        return Bukkit.getPluginManager().getPlugin("WorldGuard") != null;
+    }
+
+    @Override
+    public boolean isProtected(Block block) {
+        return ProtectionUtil.isWorldGuardProtected(block);
+    }
+
+    @Override
+    public UUID getOwnerUUID(Block block) {
+        return ProtectionUtil.worldGuardOwner(block);
     }
 
     @Override
@@ -46,7 +61,7 @@ public class WorldGuardProtectionListener extends TempAccessListener {
 
     @Override
     protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
-        if (Bukkit.getPluginManager().getPlugin("WorldGuard") == null || extra == null || extra.isEmpty()) {
+        if (!isActive() || extra == null || extra.isEmpty()) {
             return;
         }
         RegionManager manager = getRegionManager(block);
@@ -68,7 +83,7 @@ public class WorldGuardProtectionListener extends TempAccessListener {
 
     @Override
     protected TempGrant prepare(Block block, Player player) {
-        if (Bukkit.getPluginManager().getPlugin("WorldGuard") == null) {
+        if (!isActive()) {
             return null;
         }
         UUID uuid = player.getUniqueId();
@@ -112,7 +127,7 @@ public class WorldGuardProtectionListener extends TempAccessListener {
 
     @Override
     protected void revoke(Block block, Player player, TempGrant grant) {
-        if (!grant.granted || Bukkit.getPluginManager().getPlugin("WorldGuard") == null) {
+        if (!grant.granted || !isActive()) {
             return;
         }
         // 仅移除本次临时添加的区域成员，避免误删玩家原本的成员身份

@@ -17,7 +17,7 @@ import com.lonleaf.chesttheft.lootchest.LootChestManager;
 import com.lonleaf.chesttheft.message.BitmapCalculator;
 import com.lonleaf.chesttheft.message.OffsetChars;
 import com.lonleaf.chesttheft.packet.PacketManager;
-import com.lonleaf.chesttheft.protection.ProtectionListener;
+import com.lonleaf.chesttheft.protection.ProtectionManager;
 import com.lonleaf.chesttheft.service.ChestService;
 import com.lonleaf.chesttheft.service.KeyGlowTask;
 import com.lonleaf.chesttheft.trigger.TriggerManager;
@@ -38,7 +38,7 @@ public final class ChestTheft extends JavaPlugin {
     private LockConfigManager lockConfigManager;
     private LootChestManager lootChestManager;
     private KeyGlowTask keyGlowTask;
-    private ProtectionListener protectionListener;
+    private ProtectionManager protectionManager;
 
     @Override
     public void onLoad() {
@@ -102,11 +102,10 @@ public final class ChestTheft extends JavaPlugin {
         gameManager = new GameManager(this, config.getGameConfig(), triggerManager, chestService, itemManager);
 
         getServer().getPluginManager().registerEvents(new ChestListener(chestService, gameManager, itemManager, config, lockConfigManager, triggerManager), this);
-        // 保护监听：监听本插件核心操作事件（受保护箱子阻止上锁/交互、保护所有者接管卸锁），
-        // 并订阅 LWC/Bolt 保护创建回调（已上锁箱子被保护且关闭撬锁时自动卸锁）
-        protectionListener = new ProtectionListener(this, config, chestService, itemManager, databaseManager.getDatabase());
-        protectionListener.register();
-        getServer().getPluginManager().registerEvents(protectionListener, this);
+        // 保护兼容统一入口：监听本插件核心操作事件（受保护箱子阻止上锁/交互、保护所有者接管卸锁），
+        // 统一调度各保护插件适配器（临时授权 / 撤销 / 保护创建回调自动卸锁）
+        protectionManager = new ProtectionManager(this, config, chestService, itemManager, databaseManager.getDatabase());
+        protectionManager.register();
         // 小游戏管理器监听：撬锁中受击或移动超范围时按配置中止游戏
         getServer().getPluginManager().registerEvents(gameManager, this);
         // 钥匙发光提示：手持匹配钥匙时对应箱子发光（key.glow-* 配置）
@@ -139,8 +138,8 @@ public final class ChestTheft extends JavaPlugin {
         if (keyGlowTask != null) {
             keyGlowTask.cancel();
         }
-        if (protectionListener != null) {
-            protectionListener.unregister();
+        if (protectionManager != null) {
+            protectionManager.unregister();
         }
         PacketEvents.getAPI().terminate();
         if (databaseManager != null) {
