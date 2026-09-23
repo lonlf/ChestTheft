@@ -11,8 +11,7 @@ get out the lockpick and start a minigame.
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](#requirements)
 [![Version](https://img.shields.io/badge/version-2.0.1-green)](#)
 
-[中文说明](docs/promotion/README-zh_CN.md) · [Wiki](docs/wiki/README.md) · [Trigger reference](docs/trigger-actions.md)
-
+[Wiki](https://github.com/lonlf/ChestTheft/wiki/) · [Trigger reference](https://github.com/lonlf/ChestTheft/wiki/trigger-actions)
 </div>
 
 ---
@@ -192,20 +191,7 @@ item definitions, difficulty tiers, loot chest profiles, triggers and language f
 
 ## Documentation
 
-Full documentation lives in [`docs/`](docs/):
-
-| Page | Contents |
-| --- | --- |
-| [Quick start](docs/wiki/快速开始.md) | Install, run the full lock → pair → open → pick loop |
-| [Items & interaction](docs/wiki/物品与交互.md) | Key / lock / picker definitions, interaction keys |
-| [External-plugin items](docs/wiki/外部插件物品.md) | Use ItemsAdder / Nexo / Oraxen / CraftEngine / NeigeItems / MMOItems / MythicMobs items as keys, locks, pickers or loot |
-| [Minigames](docs/wiki/撬锁玩法.md) | The three minigames, difficulty tiers, sound config |
-| [Configuration](docs/wiki/配置详解.md) | Every option in `config.yml` |
-| [Trigger system](docs/wiki/触发器系统.md) | Trigger types, actions, placeholders |
-| [Loot chests](docs/wiki/战利品箱.md) | Loot chest profiles |
-| [Commands & permissions](docs/wiki/命令与权限.md) | Commands, permissions, language, database |
-| [Resource pack](docs/wiki/材质包.md) | Bitmap rendering, codepoints, custom skins |
-| [Protection compatibility](docs/wiki/保护插件兼容.md) | Integration behaviour per plugin |
+Full documentation lives in [`wiki`](https://github.com/lonlf/ChestTheft/wiki/):
 
 ## Building
 
