@@ -26,6 +26,9 @@ import java.util.function.Consumer;
  */
 public class BoltAdapter implements ProtectionAdapter {
 
+    /** 临时授权写入的 Bolt access 值（同时作为识别"残留临时值"的哨兵）。 */
+    private static final String TEMP_ACCESS_VALUE = "normal";
+
     private final Plugin plugin;
     private final PluginConfig config;
     /** 临时授权数据库记录（崩溃后启动清理恢复残留授权）。 */
@@ -88,7 +91,15 @@ public class BoltAdapter implements ProtectionAdapter {
         Map<UUID, TempGrant> grants = temporaryAccesses.get(location);
         TempGrant previous = grants == null ? null : grants.remove(uuid);
         if (previous != null) {
-            revokeGrant(bolt, location, uuid, previous);
+            if (!revokeGrant(bolt, location, uuid, previous)) {
+                // 上一次撤销失败：回填记录并放弃本次授权。
+                // 否则残留的临时值会被下面当成"原值"记录，最终恢复成永久授权且记录看起来正常
+                temporaryAccesses.computeIfAbsent(location, k -> new HashMap<>()).put(uuid, previous);
+                if (config.isDebug()) {
+                    plugin.getLogger().info("Bolt 上次临时授权撤销失败，跳过本次授权: " + uuid + " @ " + location);
+                }
+                return;
+            }
             if (grants.isEmpty()) {
                 temporaryAccesses.remove(location);
             }
@@ -102,27 +113,35 @@ public class BoltAdapter implements ProtectionAdapter {
             Map<String, String> access = protection.getAccess();
             String key = "player:" + uuid;
             original = access.get(key);
+            if (TEMP_ACCESS_VALUE.equals(original)) {
+                // 读到的"原值"是本插件写入的临时值（历史残留）：只告警便于排查。
+                // 不改行为——"normal"也可能是所有者显式授予的合法值，按原值恢复更安全；
+                // 新的残留不会再产生（撤销失败会回填记录并中止本次授权）
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_STALE_VALUE_SEEN, "bolt", location));
+            }
             // 先落库（崩溃保险）：记录授权前原值，启动清理时据此恢复；Bolt access 为持久化写入，
             // 崩溃后残留的临时授权会在下次启动按记录移除/恢复；落库失败则中止授权
             if (!database.recordTempGrant(pluginType(), location, uuid, original == null ? "" : original)) {
                 plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_GRANT_RECORD_FAIL, pluginType(), location));
             } else {
                 try {
-                    access.put(key, "normal");
+                    access.put(key, TEMP_ACCESS_VALUE);
                     bolt.saveProtection(protection);
                     granted = true;
                 } catch (Exception e) {
-                    // 写入失败：回滚已写入的 access（恢复原值）并删除记录，避免授权残留
+                    // 写入失败：回滚已写入的 access；回滚成功才删记录（无权限无记录），
+                    // 回滚失败则保留记录并标记已授权，交给撤销/启动清理重试
                     plugin.getLogger().fine("Bolt temp grant failed: " + e.getMessage());
-                    if (original == null) {
-                        access.remove(key);
+                    if (rollbackAccess(bolt, protection, key, original)) {
+                        granted = false;
+                        try {
+                            database.deleteTempGrant(pluginType(), location, uuid);
+                        } catch (Exception ignored) {
+                        }
                     } else {
-                        access.put(key, original);
-                    }
-                    bolt.saveProtection(protection);
-                    try {
-                        database.deleteTempGrant(pluginType(), location, uuid);
-                    } catch (Exception ignored) {
+                        granted = true;
+                        plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_STALE_KEEP,
+                                pluginType(), location));
                     }
                 }
             }
@@ -154,15 +173,44 @@ public class BoltAdapter implements ProtectionAdapter {
         if (grants.isEmpty()) {
             temporaryAccesses.remove(location);
         }
-        if (grant != null) {
-            revokeGrant(bolt, location, player.getUniqueId(), grant);
+        if (grant != null && !revokeGrant(bolt, location, player.getUniqueId(), grant)) {
+            // 撤销失败（如区块未加载无法访问）：恢复记录供下次授权/插件禁用清理时重试
+            temporaryAccesses.computeIfAbsent(location, k -> new HashMap<>()).put(player.getUniqueId(), grant);
         }
     }
 
-    /** 撤销一次临时授权：恢复 access 原值（granted 时）并恢复 NOSPAM 状态，删除数据库记录。 */
-    private void revokeGrant(BoltAPI bolt, BlockLocation location, UUID uuid, TempGrant grant) {
+    /** 回滚刚写入的 access 并回读确认：真正恢复成功才返回 true。 */
+    private boolean rollbackAccess(BoltAPI bolt, org.popcraft.bolt.protection.Protection protection,
+                                   String key, String original) {
+        try {
+            if (original == null) {
+                protection.getAccess().remove(key);
+            } else {
+                protection.getAccess().put(key, original);
+            }
+            bolt.saveProtection(protection);
+            String current = protection.getAccess().get(key);
+            return original == null ? current == null : original.equals(current);
+        } catch (Exception e) {
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_REVOKE_FAIL, e.getMessage()));
+            return false;
+        }
+    }
+
+    /** 撤销一次临时授权：恢复 access 原值（granted 时）并恢复 NOSPAM 状态；
+     *  撤销成功才删除数据库记录；恢复失败（区块未加载等）返回 false，记录保留供启动清理兜底。 */
+    private boolean revokeGrant(BoltAPI bolt, BlockLocation location, UUID uuid, TempGrant grant) {
+        boolean restored = !grant.granted;
         if (grant.granted) {
-            restoreAccess(bolt, location, uuid, grant.originalAccess);
+            // 第三方 API 异常隔离：失败返回 false（记录保留、上层回填），不向授权/撤销循环冒泡
+            try {
+                restored = restoreAccess(bolt, location, uuid, grant.originalAccess);
+            } catch (LinkageError | Exception e) {
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_REVOKE_FAIL, e.getMessage()));
+                restored = false;
+            }
+        }
+        if (restored) {
             // 权限已恢复，删除数据库记录（崩溃清理不再处理该条）
             try {
                 database.deleteTempGrant(pluginType(), location, uuid);
@@ -173,12 +221,18 @@ public class BoltAdapter implements ProtectionAdapter {
         if (!grant.nospamBefore) {
             Player player = Bukkit.getPlayer(uuid);
             if (player != null && player.isOnline()) {
-                toggleNospam(player, false);
+                try {
+                    toggleNospam(player, false);
+                } catch (LinkageError | Exception e) {
+                    plugin.getLogger().fine("恢复 NOSPAM 状态失败: " + e.getMessage());
+                }
             }
         }
         if (config.isDebug()) {
-            plugin.getLogger().info("撤销临时 Bolt 打开权限: " + uuid + " @ " + location);
+            plugin.getLogger().info("撤销临时 Bolt 打开权限: " + uuid + " @ " + location
+                    + (restored ? "" : "（恢复失败，保留记录待重试）"));
         }
+        return restored;
     }
 
     // ==================== 生命周期 ====================
@@ -257,26 +311,30 @@ public class BoltAdapter implements ProtectionAdapter {
             }
             Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
             try {
-                revokeFromRecord(block, record.getPlayerUuid(), record.getExtra());
-                database.deleteTempGrant(pluginType(), loc, record.getPlayerUuid());
-                plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_CLEANED, pluginType(), loc));
+                if (revokeFromRecord(block, record.getPlayerUuid(), record.getExtra())) {
+                    database.deleteTempGrant(pluginType(), loc, record.getPlayerUuid());
+                    plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_CLEANED, pluginType(), loc));
+                } else {
+                    // 恢复未确认成功（保护已消失/区块未加载）：保留记录下次启动重试，避免授权残留无法追踪
+                    plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_STALE_KEEP, pluginType(), loc));
+                }
             } catch (Exception e) {
                 plugin.getLogger().warning(Messages.getLog(Messages.LOG_STALE_CLEAN_FAIL, e.getMessage()));
             }
         }
     }
 
-    /** 依据记录撤销崩溃残留的 Bolt 访问授权（玩家可能离线，用 UUID 级恢复）。 */
-    private void revokeFromRecord(Block block, UUID playerUuid, String extra) {
+    /** 依据记录撤销崩溃残留的 Bolt 访问授权（玩家可能离线，用 UUID 级恢复）；恢复成功返回 true。 */
+    private boolean revokeFromRecord(Block block, UUID playerUuid, String extra) {
         if (!isActive()) {
-            return;
+            return false;
         }
         BoltAPI bolt = Bukkit.getServicesManager().load(BoltAPI.class);
         if (bolt == null) {
-            return;
+            return false;
         }
         // extra 为空串表示授权前原本无 access 记录（撤销即移除）；否则恢复原值
-        restoreAccess(bolt, block, playerUuid, extra.isEmpty() ? null : extra);
+        return restoreAccess(bolt, block, playerUuid, extra.isEmpty() ? null : extra);
     }
 
     // ==================== Bolt 内部工具 ====================
@@ -298,30 +356,31 @@ public class BoltAdapter implements ProtectionAdapter {
         return before;
     }
 
-    /** 按位置恢复 access 原值（BlockLocation 反查方块）。 */
-    private void restoreAccess(BoltAPI bolt, BlockLocation location, UUID uuid, String original) {
+    /** 按位置恢复 access 原值（BlockLocation 反查方块）；无法访问（区块未加载）时返回 false。 */
+    private boolean restoreAccess(BoltAPI bolt, BlockLocation location, UUID uuid, String original) {
         if (location == null) {
-            return;
+            return false;
         }
         World world = location.toWorld();
         if (world == null) {
-            return;
+            return false;
         }
-        restoreAccess(bolt, world.getBlockAt(location.getX(), location.getY(), location.getZ()), uuid, original);
+        return restoreAccess(bolt, world.getBlockAt(location.getX(), location.getY(), location.getZ()), uuid, original);
     }
 
-    /** 恢复玩家在指定方块上的 Bolt access 原值；original 为 null 表示原本无记录，移除授权。 */
-    private void restoreAccess(BoltAPI bolt, Block block, UUID uuid, String original) {
+    /** 恢复玩家在指定方块上的 Bolt access 原值；original 为 null 表示原本无记录，移除授权。
+     *  保护已消失时返回 false（视为无法恢复）。 */
+    private boolean restoreAccess(BoltAPI bolt, Block block, UUID uuid, String original) {
         org.popcraft.bolt.protection.Protection protection = bolt.findProtection(block);
         if (protection == null) {
-            return;
+            return false;
         }
         Map<String, String> access = protection.getAccess();
         String key = "player:" + uuid;
         String current = access.get(key);
         if (original == null) {
             if (current == null) {
-                return;
+                return true;   // 本就没有该玩家的授权，无需恢复
             }
             access.remove(key);
         } else {
@@ -331,6 +390,7 @@ public class BoltAdapter implements ProtectionAdapter {
         if (config.isDebug()) {
             plugin.getLogger().info("撤销临时 Bolt 打开权限: " + uuid + " @ " + BlockLocation.from(block));
         }
+        return true;
     }
 
     // ==================== Bolt 保护创建回调 ====================
@@ -345,7 +405,10 @@ public class BoltAdapter implements ProtectionAdapter {
             @Override
             public void accept(LockBlockEvent event) {
                 try {
-                    protectionCreatedHandler.accept(event.getBlock());
+                    // Bolt 事件回调线程不保证为主线程：自动卸锁涉及 DB 写与掉落物，必须调度回主线程执行
+                    if (plugin.isEnabled()) {
+                        Bukkit.getScheduler().runTask(plugin, () -> protectionCreatedHandler.accept(event.getBlock()));
+                    }
                 } catch (Exception e) {
                     plugin.getLogger().warning(Messages.getLog(Messages.LOG_PROTECTION_CALLBACK_FAIL, "Bolt", e.getMessage()));
                 }

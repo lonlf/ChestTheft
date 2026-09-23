@@ -13,8 +13,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** 触发器管理器：加载 trigger 文件夹下全部触发器配置，按触发类型分发执行。 */
 public class TriggerManager {
@@ -24,6 +26,8 @@ public class TriggerManager {
     private final Map<TriggerType, List<Trigger>> triggers = new EnumMap<>(TriggerType.class);
     /** 触发器 id 索引：全局触发器 + 物品内嵌定义转换的临时触发器（def:<物品ID>:<触发器键>），锁物品按 id 解析用。 */
     private final Map<String, Trigger> triggersById = new HashMap<>();
+    /** 全局触发器 id 集合：fireForLock 按 id 分发时跳过（全局触发器已由同事件的 fire(type) 执行，避免双重执行）。 */
+    private final Set<String> globalTriggerIds = new HashSet<>();
 
     public TriggerManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -44,6 +48,7 @@ public class TriggerManager {
     public void load() {
         triggers.clear();
         triggersById.clear();
+        globalTriggerIds.clear();
         for (TriggerType type : TriggerType.values()) {
             triggers.put(type, new ArrayList<>());
         }
@@ -70,9 +75,15 @@ public class TriggerManager {
                 continue;
             }
             List<Action> actions = actionManager.parseActions(section.getConfigurationSection("actions"));
+            if (triggersById.containsKey(id)) {
+                // 重复触发器 id：跳过本次定义，避免 fire(type) 双重执行副作用；告警便于排查配置
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_DUPLICATE_ID, id, file.getName()));
+                continue;
+            }
             Trigger trigger = new Trigger(id, type, actions);
             triggers.get(type).add(trigger);
             triggersById.put(id, trigger);
+            globalTriggerIds.add(id);
         }
     }
 
@@ -94,6 +105,7 @@ public class TriggerManager {
     /**
      * 按 id 列表触发锁物品的触发器：只执行与事件类型匹配的触发器动作；
      * 未注册的 id（如物品定义已被删除）记日志跳过，不中断其余触发器。
+     * 全局触发器 id 跳过：同一事件的 fire(type) 已分发执行过它们，再执行会双重触发副作用。
      */
     public void fireForLock(List<String> triggerIds, TriggerType type, TriggerContext context) {
         if (triggerIds == null || triggerIds.isEmpty()) {
@@ -105,10 +117,12 @@ public class TriggerManager {
                 plugin.getLogger().warning(Messages.getLog(Messages.LOG_TRIGGER_REF_MISSING, id, "lock-item"));
                 continue;
             }
+            // 全局触发器（trigger/*.yml 定义）已由同事件的 fire(type) 执行；仅执行锁物品内嵌触发器（def: 临时 id）
+            if (globalTriggerIds.contains(id)) {
+                continue;
+            }
             if (trigger.type() == type) {
-                for (Action action : trigger.actions()) {
-                    action.trigger(context);
-                }
+                trigger.fire(context);   // 动作级异常隔离在 Trigger.fire 内
             }
         }
     }

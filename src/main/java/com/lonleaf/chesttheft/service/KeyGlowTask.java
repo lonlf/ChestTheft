@@ -54,14 +54,22 @@ public class KeyGlowTask extends BukkitRunnable {
     private final Map<BlockLocation, BlockLocation> sideToGlowKey = new HashMap<>();
     /** 最近一次对账的匹配结果：发光 key → 可见观众；延迟重生任务据此判断玩家是否仍持有匹配钥匙。 */
     private final Map<BlockLocation, Set<UUID>> glowMatched = new HashMap<>();
-    /** 门发光实体已同步的开门状态（仅门位置登记）：open 变化时销毁实体等待重生（生成时只复制一次，门转动后需跟随）。 */
+    /** 门发光实体生成时对应的门 open 状态（仅门位置登记）：低频兜底轮询据此检测红石/活塞驱动的门开关
+     *  （玩家交互由 onDoorInteract 事件驱动即时处理，此处仅覆盖无交互事件的状态变化）。 */
     private final Map<BlockLocation, Boolean> doorGlowOpen = new HashMap<>();
-    /** 门 open 变化后延迟重生的调度任务（按位置登记）：销毁旧实体等转动动画播完再生成新状态实体，避免静态实体与动画错位。 */
+    /** 兜底轮询计数：每 DOOR_POLL_INTERVAL 次对账（对账每 5 tick 一次）执行一次门状态检查。 */
+    private int doorPollCounter;
+    /** 门状态兜底轮询间隔（对账次数；4 次 = 20 tick = 1 秒）。 */
+    private static final int DOOR_POLL_INTERVAL = 4;
+    /** 门交互后延迟重生的调度任务（按位置登记）：销毁旧实体等转动动画播完再生成新状态实体，避免静态实体与动画错位。 */
     private final Map<BlockLocation, BukkitTask> pendingDoorSync = new HashMap<>();
-    /** 门 open 状态变化后延迟重生的时长（5 tick），等待客户端门转动动画播完。 */
+    /** 门交互后延迟重生的时长（5 tick），等待客户端门转动动画播完。 */
     private static final long DOOR_SYNC_DELAY_TICKS = 5L;
-    /** 打开中的箱子位置：打开时移除发光实体（避免原版开盖动画与静态展示实体错位），关闭后延迟恢复。 */
-    private final Set<BlockLocation> openChests = new HashSet<>();
+    /** 打开中的箱子位置 → 打开时刻（ms）：打开时移除发光实体（避免原版开盖动画与静态展示实体错位），
+     *  关闭后延迟恢复；超时清理防残留（箱子被炸毁/玩家异常下线未触发关闭事件时，标记残留会永久抑制发光）。 */
+    private final Map<BlockLocation, Long> openChests = new HashMap<>();
+    /** "打开中"标记的最大存活时长（ms）：超过视为残留，允许重新生成发光。 */
+    private static final long OPEN_CHEST_STALE_MS = 60_000L;
     /** 关闭后延迟恢复发光的调度任务（按位置登记，延迟期间重新打开则取消，避免误恢复）。 */
     private final Map<BlockLocation, BukkitTask> pendingRestore = new HashMap<>();
     /** 关闭后延迟恢复发光的时长（0.5 秒），避免关闭动画期间发光实体立即叠加造成闪烁/错位。 */
@@ -93,21 +101,32 @@ public class KeyGlowTask extends BukkitRunnable {
         // 匹配结果：发光 key（单箱=自身 / 双箱=统一 key）→ 可见观众（持有匹配钥匙且在发光范围内的玩家）
         glowMatched.clear();
         sideToGlowKey.clear();
+        // 第一阶段：收集手持配对钥匙的玩家（配对位置 → 玩家列表）。
+        // 每个位置每轮只查询一次锁凭证，避免多玩家配对同一把锁时的重复 DB 查询
+        Map<BlockLocation, List<Player>> holders = new HashMap<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
             ItemStack hand = player.getInventory().getItemInMainHand();
             if (!itemManager.isType(hand, ItemType.KEY)) {
                 continue;
             }
             BlockLocation paired = itemManager.getPairedLock(hand);
-            if (paired == null || !tokenMatches(paired, hand)) {
-                continue;
+            if (paired != null) {
+                holders.computeIfAbsent(paired, k -> new ArrayList<>()).add(player);
             }
+        }
+        for (Map.Entry<BlockLocation, List<Player>> entry : holders.entrySet()) {
+            BlockLocation paired = entry.getKey();
             World world = paired.toWorld();
             if (world == null) {
                 continue;
             }
             Block block = world.getBlockAt(paired.getX(), paired.getY(), paired.getZ());
             if (block.getType().isAir()) {
+                continue;
+            }
+            // 每位置只查一次锁凭证（原实现对每个持钥匙玩家各查一次）；配对值相等且锁仍存在才继续
+            String token = chestService.getLockToken(block);
+            if (token == null) {
                 continue;
             }
             List<Block> sides = chestSides(block);
@@ -119,31 +138,41 @@ public class KeyGlowTask extends BukkitRunnable {
                         > sides.get(1).getX() + sides.get(1).getZ() ? sides.get(0) : sides.get(1);
                 doubleKey = BlockLocation.from(keyBlock);
             }
-            // 双箱子：钥匙配对锁位于单侧，粒子需覆盖双箱两侧；发光合并为一个实体
-            for (Block side : sides) {
-                Location center = side.getLocation().add(0.5, 0.5, 0.5);
-                double distanceSq = player.getLocation().distanceSquared(center);
-                // 粒子效果（key.particle-*）：仅对钥匙持有者发送
-                if (particleEnabled && distanceSq <= particleRadiusSq) {
-                    com.github.retrooper.packetevents.protocol.particle.Particle<?> dust =
-                            new com.github.retrooper.packetevents.protocol.particle.Particle<>(
-                                    ParticleTypes.DUST,
-                                    new ParticleDustData(DUST_SIZE,
-                                            new com.github.retrooper.packetevents.protocol.color.Color(
-                                                    particleColor.getRed(), particleColor.getGreen(), particleColor.getBlue())));
-                    WrapperPlayServerParticle wrapper = new WrapperPlayServerParticle(
-                            dust, false,
-                            new Vector3d(center.getX(), center.getY(), center.getZ()),
-                            new com.github.retrooper.packetevents.util.Vector3f(
-                                    (float) PARTICLE_OFFSET, (float) PARTICLE_OFFSET, (float) PARTICLE_OFFSET),
-                            0f, PARTICLE_COUNT);
-                    PacketEvents.getAPI().getPlayerManager().sendPacket(player, wrapper);
+            for (Player player : entry.getValue()) {
+                // 玩家可能已换世界：distanceSquared 跨世界会抛异常并中断整个扫描周期
+                if (!world.equals(player.getWorld())) {
+                    continue;
                 }
-                // 发光效果（key.glow-*）：双箱统一 key，单箱用自身位置；任一侧在范围内即发光
-                if (glowEnabled && distanceSq <= glowRadiusSq) {
-                    BlockLocation key = isDouble ? doubleKey : BlockLocation.from(side);
-                    sideToGlowKey.put(BlockLocation.from(side), key);
-                    glowMatched.computeIfAbsent(key, k -> new HashSet<>()).add(player.getUniqueId());
+                ItemStack hand = player.getInventory().getItemInMainHand();
+                if (!token.equals(itemManager.getPairedToken(hand))) {
+                    continue;
+                }
+                // 双箱子：钥匙配对锁位于单侧，粒子需覆盖双箱两侧；发光合并为一个实体
+                for (Block side : sides) {
+                    Location center = side.getLocation().add(0.5, 0.5, 0.5);
+                    double distanceSq = player.getLocation().distanceSquared(center);
+                    // 粒子效果（key.particle-*）：仅对钥匙持有者发送
+                    if (particleEnabled && distanceSq <= particleRadiusSq) {
+                        com.github.retrooper.packetevents.protocol.particle.Particle<?> dust =
+                                new com.github.retrooper.packetevents.protocol.particle.Particle<>(
+                                        ParticleTypes.DUST,
+                                        new ParticleDustData(DUST_SIZE,
+                                                new com.github.retrooper.packetevents.protocol.color.Color(
+                                                        particleColor.getRed(), particleColor.getGreen(), particleColor.getBlue())));
+                        WrapperPlayServerParticle wrapper = new WrapperPlayServerParticle(
+                                dust, false,
+                                new Vector3d(center.getX(), center.getY(), center.getZ()),
+                                new com.github.retrooper.packetevents.util.Vector3f(
+                                        (float) PARTICLE_OFFSET, (float) PARTICLE_OFFSET, (float) PARTICLE_OFFSET),
+                                0f, PARTICLE_COUNT);
+                        PacketEvents.getAPI().getPlayerManager().sendPacket(player, wrapper);
+                    }
+                    // 发光效果（key.glow-*）：双箱统一 key，单箱用自身位置；任一侧在范围内即发光
+                    if (glowEnabled && distanceSq <= glowRadiusSq) {
+                        BlockLocation key = isDouble ? doubleKey : BlockLocation.from(side);
+                        sideToGlowKey.put(BlockLocation.from(side), key);
+                        glowMatched.computeIfAbsent(key, k -> new HashSet<>()).add(player.getUniqueId());
+                    }
                 }
             }
         }
@@ -151,23 +180,33 @@ public class KeyGlowTask extends BukkitRunnable {
         Iterator<Map.Entry<BlockLocation, int[]>> iterator = glowEntities.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<BlockLocation, int[]> entry = iterator.next();
-            Set<UUID> holders = glowMatched.get(entry.getKey());
-            if (holders == null) {
+            Set<UUID> matchedHolders = glowMatched.get(entry.getKey());
+            if (matchedHolders == null) {
                 DisplayEntityUtil.destroyEntity(entry.getValue());
-                doorGlowOpen.remove(entry.getKey());
                 iterator.remove();
             } else {
-                DisplayEntityUtil.syncGlowViewers(entry.getValue(), holders);
-                // 门 open 状态变化时延迟刷新展示实体方块状态，使其跟随真实门转动
-                syncDoorGlowState(entry.getKey());
+                DisplayEntityUtil.syncGlowViewers(entry.getValue(), matchedHolders);
+            }
+        }
+        // 清理长期"打开中"残留（箱子被炸毁/玩家异常下线未触发关闭事件）：超时后允许重新生成发光
+        long now = System.currentTimeMillis();
+        Iterator<Map.Entry<BlockLocation, Long>> openIt = openChests.entrySet().iterator();
+        while (openIt.hasNext()) {
+            if (now - openIt.next().getValue() > OPEN_CHEST_STALE_MS) {
+                openIt.remove();
             }
         }
         for (BlockLocation loc : glowMatched.keySet()) {
             // 打开中 / 已存在实体 / 门转动等待重生（销毁后 5 tick 内）的位置跳过，不重复生成
-            if (openChests.contains(loc) || glowEntities.containsKey(loc) || pendingDoorSync.containsKey(loc)) {
+            if (openChests.containsKey(loc) || glowEntities.containsKey(loc) || pendingDoorSync.containsKey(loc)) {
                 continue;
             }
             spawnGlowEntities(loc, glowMatched.get(loc), glowColor);
+        }
+        // 低频兜底轮询门状态（红石/活塞等非交互驱动）：每 DOOR_POLL_INTERVAL 次对账检查一次
+        if (++doorPollCounter >= DOOR_POLL_INTERVAL) {
+            doorPollCounter = 0;
+            pollDoorGlowState();
         }
     }
 
@@ -184,6 +223,10 @@ public class KeyGlowTask extends BukkitRunnable {
             if (isDoorMaterial(block.getType())) {
                 // 门：上下两个真实半块状态（half=upper/lower）的展示实体并排，覆盖整扇门
                 entityIds = DisplayEntityUtil.spawnGlowDisplayDoor(block, sides.get(1), glowArgb(glowColor), holders);
+                // 记录实体生成时对应的门 open 状态，供低频兜底轮询对比（红石/活塞驱动时无交互事件）
+                if (block.getState().getBlockData() instanceof org.bukkit.block.data.type.Door doorData) {
+                    doorGlowOpen.put(loc, doorData.isOpen());
+                }
             } else {
                 // 双箱：左右两个真实方块状态（type=left/right）的展示实体并排，还原双箱外观
                 entityIds = DisplayEntityUtil.spawnGlowDisplayDouble(block, sides.get(1), glowArgb(glowColor), holders);
@@ -194,51 +237,59 @@ public class KeyGlowTask extends BukkitRunnable {
         glowEntities.put(loc, entityIds);
     }
 
-    /** 门 open 状态变化时：立即销毁旧发光实体，5 tick 后按最新门状态重新生成（转动动画期间无实体，避免静态实体与动画错位）；非门或无变化跳过。 */
-    private void syncDoorGlowState(BlockLocation loc) {
-        World world = loc.toWorld();
-        if (world == null) {
-            return;
+    /** 销毁门的发光展示实体并安排 5 tick 后按最新状态重生（事件驱动与兜底轮询共用）：
+     *  取消待进行的重生任务；无实体/无匹配玩家时重生任务空转一次后结束。 */
+    private void destroyAndRespawnDoor(BlockLocation key) {
+        BukkitTask oldTask = pendingDoorSync.remove(key);
+        if (oldTask != null) {
+            oldTask.cancel();
         }
-        Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
-        if (!isDoorMaterial(block.getType())) {
-            return;
-        }
-        if (!(block.getState().getBlockData() instanceof org.bukkit.block.data.type.Door doorData)) {
-            return;
-        }
-        Boolean lastOpen = doorGlowOpen.get(loc);
-        if (lastOpen == null) {
-            // 首次登记（实体刚生成）：只记录当前 open 状态，不视为变化——
-            // 否则生成后的下一轮对账会被误判为"转动"而立即销毁重生，造成从范围外进入时闪烁
-            doorGlowOpen.put(loc, doorData.isOpen());
-            return;
-        }
-        if (lastOpen == doorData.isOpen()) {
-            return;
-        }
-        doorGlowOpen.put(loc, doorData.isOpen());
-        // 立即销毁旧实体（此时门转动动画开始），等待动画播完重新生成
-        int[] entityIds = glowEntities.remove(loc);
+        int[] entityIds = glowEntities.remove(key);
         if (entityIds != null) {
             DisplayEntityUtil.destroyEntity(entityIds);
+            doorGlowOpen.remove(key);
         }
-        // DOOR_SYNC_DELAY_TICKS 后重生：玩家仍持有匹配钥匙（仍在匹配集合）且未打开/未生成时，
-        // 按真实方块最新状态重新生成（spawnGlowDisplayDoor 读取 open/hinge，无需刷新已有实体）
+        // 5 tick 后重生：玩家仍持有匹配钥匙（仍在匹配集合）且未打开/未生成时按最新状态重新生成
         BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            pendingDoorSync.remove(loc);
-            Set<UUID> holders = glowMatched.get(loc);
-            if (holders != null && !openChests.contains(loc) && !glowEntities.containsKey(loc)) {
-                spawnGlowEntities(loc, holders, config.getKeyGlowColor());
+            pendingDoorSync.remove(key);
+            Set<UUID> holders = glowMatched.get(key);
+            if (holders != null && !openChests.containsKey(key) && !glowEntities.containsKey(key)) {
+                spawnGlowEntities(key, holders, config.getKeyGlowColor());
             }
         }, DOOR_SYNC_DELAY_TICKS);
-        BukkitTask old = pendingDoorSync.put(loc, task);
-        if (old != null) {
-            old.cancel();
+        pendingDoorSync.put(key, task);
+    }
+
+    /** 玩家交互门（开/关）时调用：立即销毁该门的发光展示实体，5 tick 后按最新门状态重新生成
+     *  （门转动动画约 5 tick，重生时 spawnGlowDisplayDoor 读取真实方块最新 open/hinge 状态）。
+     *  事件驱动替代原先每 5 tick 轮询门状态的逻辑，响应更快。 */
+    public void onDoorInteract(BlockLocation loc) {
+        BlockLocation key = sideToGlowKey.getOrDefault(loc, loc);
+        destroyAndRespawnDoor(key);
+    }
+
+    /** 低频兜底轮询：检测红石/活塞等非玩家交互驱动的门状态变化（事件驱动覆盖不到），变化则销毁实体并安排重生。
+     *  仅遍历当前正在发光的门（数量极少，开销可忽略）；玩家交互场景已由事件驱动即时处理，此处不重复。 */
+    private void pollDoorGlowState() {
+        for (BlockLocation key : doorGlowOpen.keySet().toArray(new BlockLocation[0])) {
+            World world = key.toWorld();
+            if (world == null) {
+                continue;
+            }
+            Block block = world.getBlockAt(key.getX(), key.getY(), key.getZ());
+            if (!isDoorMaterial(block.getType())
+                    || !(block.getState().getBlockData() instanceof org.bukkit.block.data.type.Door doorData)) {
+                continue;
+            }
+            if (doorGlowOpen.get(key) != null && doorGlowOpen.get(key) != doorData.isOpen()) {
+                destroyAndRespawnDoor(key);
+            }
         }
     }
 
-    /** 箱子打开时调用：取消未完成的延迟恢复，若该位置正在发光则移除发光实体并标记打开中。 */
+    /** 箱子打开时调用：取消未完成的延迟恢复，若该位置正在发光则移除发光实体，并标记打开中
+     *  （打开期间 spawn 对账跳过该位置，避免发光实体覆盖在已打开的箱子上；无条件登记，消除
+     *  "打开瞬间无发光实体"导致后续仍会生成的竞态）。 */
     public void onChestOpen(BlockLocation loc) {
         // 双箱任一侧打开均按统一 key 处理
         BlockLocation key = sideToGlowKey.getOrDefault(loc, loc);
@@ -249,14 +300,14 @@ public class KeyGlowTask extends BukkitRunnable {
         int[] entityIds = glowEntities.remove(key);
         if (entityIds != null) {
             DisplayEntityUtil.destroyEntity(entityIds);
-            doorGlowOpen.remove(key);
-            openChests.add(key);
         }
         // 发光实体已移除：取消该位置的延迟刷新任务，避免任务执行时对已销毁实体发包
         BukkitTask doorTask = pendingDoorSync.remove(key);
         if (doorTask != null) {
             doorTask.cancel();
         }
+        // 无条件登记打开中（无论打开前是否有发光）：关闭后由 onChestClose 延迟恢复，超时由对账清理
+        openChests.put(key, System.currentTimeMillis());
     }
 
     /** 箱子关闭时调用：延迟 0.5 秒恢复发光（若玩家仍持有匹配钥匙，下个对账周期自动重新生成）。 */
@@ -300,21 +351,6 @@ public class KeyGlowTask extends BukkitRunnable {
         pendingRestore.clear();
         openChests.clear();
         super.cancel();
-    }
-
-    /** 钥匙凭证与锁当前凭证一致（配对值相等），且该锁仍存在。 */
-    private boolean tokenMatches(BlockLocation paired, ItemStack key) {
-        String token = itemManager.getPairedToken(key);
-        if (token == null) {
-            return false;
-        }
-        World world = paired.toWorld();
-        if (world == null) {
-            return false;
-        }
-        Block block = world.getBlockAt(paired.getX(), paired.getY(), paired.getZ());
-        String current = chestService.getLockToken(block);
-        return token.equals(current);
     }
 
     /** 返回方块及其"另一半"（双箱左右 / 门上下半，普通方块返回自身），供粒子与发光覆盖整个结构。 */

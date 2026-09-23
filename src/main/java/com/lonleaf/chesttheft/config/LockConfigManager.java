@@ -6,6 +6,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -33,11 +34,19 @@ public class LockConfigManager {
         this.defaultConfig = defaultConfig;
     }
 
-    /** 保存默认模板 lock.yml（仅当 gamelevel 目录下没有任何 yml 时创建）。 */
+    /** 保存默认模板 locklevel.yml（仅当 gamelevel 目录下没有任何 yml 时创建；注释语言随当前语言）。 */
     private void saveDefault() {
         File[] files = gameLevelDir.listFiles((dir, name) -> name.endsWith(".yml"));
         if (files == null || files.length == 0) {
-            plugin.saveResource("gamelevel/lock.yml", false);
+            try {
+                String lang = plugin.getConfig().getString("language", "");
+                if (!TemplateFiles.saveTemplate(plugin, lang, "locklevel.yml",
+                        new File(gameLevelDir, "locklevel.yml"))) {
+                    throw new IllegalStateException("Embedded template not found in jar: templates/*/locklevel.yml");
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to save default gamelevel/locklevel.yml", e);
+            }
         }
     }
 
@@ -73,23 +82,34 @@ public class LockConfigManager {
     }
 
     /**
-     * 等级配置是默认配置（config.yml game 小节）的覆写：先用默认配置填充全部键，
-     * 再用等级配置覆写已定义的键，未定义的键自然继承默认值（含玩法特有参数）。
+     * 等级配置是默认配置（config.yml game 小节）的覆写：先完整拷入默认，再递归合并等级已定义键，
+     * 未定义键（含嵌套段的子键，如 sounds 下的 a-move）自然继承默认值。
      */
     private ConfigurationSection mergeWithDefault(ConfigurationSection override) {
         MemoryConfiguration merged = new MemoryConfiguration();
         ConfigurationSection base = defaultConfig != null ? defaultConfig.getSection() : null;
         if (base != null) {
-            for (String key : base.getKeys(false)) {
-                merged.set(key, base.get(key));
-            }
+            mergeDeep(merged, base);
         }
         if (override != null) {
-            for (String key : override.getKeys(false)) {
-                merged.set(key, override.get(key));
-            }
+            mergeDeep(merged, override);
         }
         return merged;
+    }
+
+    /** 递归深合并：source 逐键覆写 target；嵌套段递归合并，未定义的子键保留 target 原值（防止整体替换丢默认）。 */
+    private void mergeDeep(ConfigurationSection target, ConfigurationSection source) {
+        for (String key : source.getKeys(false)) {
+            if (source.get(key) instanceof ConfigurationSection sub) {
+                ConfigurationSection targetSub = target.getConfigurationSection(key);
+                if (targetSub == null) {
+                    targetSub = target.createSection(key);
+                }
+                mergeDeep(targetSub, sub);
+            } else {
+                target.set(key, source.get(key));
+            }
+        }
     }
 
     /** 获取指定等级的小游戏配置：0 级取配置文件定义的 0 级（未定义用默认）；未配置的正等级就近回退，无可用时用默认。 */

@@ -12,6 +12,7 @@ import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -57,15 +58,17 @@ public class GriefDefenderAdapter extends TempAccessAdapter {
     }
 
     @Override
-    protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
+    protected boolean revokeFromRecord(Block block, UUID playerUuid, String extra) {
         if (!isActive()) {
-            return;
+            return false;
         }
         Claim claim = GriefDefender.getCore().getClaimAt(block.getLocation());
         if (claim == null || claim.isWilderness()) {
-            return;
+            // 领地已不存在/无领地：无法确认恢复，保留记录下次重试
+            return false;
         }
         claim.removeUserTrust(playerUuid, TrustTypes.CONTAINER);
+        return true;
     }
 
     /** 注册并订阅 GriefDefender 领地创建事件（仅 GriefDefender 插件存在时）。 */
@@ -165,25 +168,20 @@ public class GriefDefenderAdapter extends TempAccessAdapter {
         // GriefDefender 边界为闭区间 [min, max]，两个角方块均属于领地
         Vector3i min = claim.getLesserBoundaryCorner();
         Vector3i max = claim.getGreaterBoundaryCorner();
-        int minY = Math.max(min.getY(), world.getMinHeight());
-        int maxY = Math.min(max.getY(), world.getMaxHeight() - 1);
         for (Vector3i chunkPos : claim.getChunkPositions()) {
             int cx = chunkPos.getX();
             int cz = chunkPos.getZ();
             if (!world.isChunkLoaded(cx, cz)) continue;
             Chunk chunk = world.getChunkAt(cx, cz);
-            for (int x = 0; x < 16; x++) {
-                for (int z = 0; z < 16; z++) {
-                    for (int y = minY; y <= maxY; y++) {
-                        Block block = chunk.getBlock(x, y, z);
-                        // 遍历的区块即领地所属区块，此处仅剔除边界区块中越界部分
-                        if (!inClaim(min, max, block.getX(), y, block.getZ())) continue;
-                        if (isChest(block)) {
-                            // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
-                            // 仅对上锁的箱子执行自动卸锁
-                            protectionCreatedHandler.accept(block);
-                        }
-                    }
+            // 仅检查方块实体（箱子/陷阱箱均为方块实体），避免按区块全 Y 层遍历造成主线程卡顿
+            for (BlockState state : chunk.getTileEntities()) {
+                Block block = state.getBlock();
+                // 遍历的区块即领地所属区块，此处仅剔除边界区块中越界部分
+                if (!inClaim(min, max, block.getX(), block.getY(), block.getZ())) continue;
+                if (isChest(block)) {
+                    // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
+                    // 仅对上锁的箱子执行自动卸锁
+                    protectionCreatedHandler.accept(block);
                 }
             }
         }

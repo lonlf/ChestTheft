@@ -118,13 +118,8 @@ public final class BitmapCalculator {
     }
 
     /**
-     * 计算单字形间隙补偿量（像素）。
-     *
-     * @param sliceWidth 切片宽度（像素）
-     * @param pngHeight  PNG 高度（像素）
-     * @param height     provider 的 height（渲染高度，像素）
-     * @param glyphGap   引擎每字形后固定间隙（像素）
-     * @return 补偿量：使下一字形起点与当前字形渲染终点对齐
+     * 计算单字形间隙补偿量：advance(上取整) + glyphGap - renderWidth(下取整)（像素），
+     * 使下一字形起点与当前字形渲染终点对齐。
      */
     private static int compensation(int sliceWidth, int pngHeight, int height, int glyphGap) {
         double scale = height / (double) pngHeight;

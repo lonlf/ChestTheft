@@ -1,13 +1,16 @@
-# 不同等级锁的小游戏配置：以数字作为等级键，键越大难度越高；name 为该等级的名称
+# 不同等级锁的小游戏配置：以数字作为等级键；每级对应一种"玩法 × 渲染 × 控制"组合，
+# 使 /chesttheft debug minigame <level> 可全面覆盖各情况的小游戏回归测试
 # 等级 0：定义时覆盖默认配置（config.yml 的 game 小节）；未定义时等级 0 使用默认配置
 # 未在此处配置的正等级将按就近原则回退：更低可用等级 → 更高可用等级 → 默认配置
-# 新增等级：复制一份配置并将键改为更大的数字即可
 # game-type：该等级使用的小游戏类型（moving-bar = 移动游标 / rhythm-bar = 节奏条 / tumbler-bar = 机关转轮），公共参数见 config.yml 的 game 小节
-# 等级划分（功能覆盖）：0-4 为 moving-bar（游标进入未完成判定区点击），5-7 为 rhythm-bar（依次命中多个判定点），8-9 为 tumbler-bar（调 A 转 B）
+# 等级功能划分（覆盖矩阵，玩法按序分组）：
+#   0-3 moving-bar：0 往复 ascii / 1 往复 bitmap / 2 骑乘 ascii / 3 骑乘 bitmap
+#   4-7 rhythm-bar：4 往复 ascii / 5 往复 bitmap / 6 骑乘 ascii / 7 骑乘 bitmap
+#   8-9 tumbler-bar：8 ascii / 9 bitmap
 # 渲染：ascii 无需材质包 / bitmap 需安装材质包；控制：oscillate=true 自动往复 / false 骑乘模式（A/D 键移动游标）
 # 难度：条长越长、判定区越短、move-interval 越小、判定点越多 → 越难
 0:
-  name: default     # 最简单：宽判定区，慢速
+  name: default     # 基准（与 config.yml game 默认一致）：moving-bar 往复 ascii，宽判定区慢速
   game-type: moving-bar
   oscillate: true
   render-mode: ascii
@@ -21,49 +24,21 @@
   interrupt-damage: true
   interrupt-move-range: 3.0
 1:
-  name: novice      # 新手：判定区收窄
-  game-type: moving-bar
-  oscillate: true
-  render-mode: ascii
-  bar-length: 15
-  unhit-length: 2
-  move-interval: 10
-  timeout: 15
-  cooldown: 3
-  access-duration: 60
-  access-once-window: 60
-  interrupt-damage: true
-  interrupt-move-range: 3.0
-2:
-  name: advanced    # 进阶：条更长 + 提速
-  game-type: moving-bar
-  oscillate: true
-  render-mode: ascii
-  bar-length: 20
-  unhit-length: 2
-  move-interval: 8
-  timeout: 18
-  cooldown: 3
-  access-duration: 60
-  access-once-window: 60
-  interrupt-damage: true
-  interrupt-move-range: 3.0
-3:
-  name: master      # 大师：bitmap 位图 + 高速（需材质包）
+  name: moving-bitmap   # moving-bar 往复 + bitmap 位图（需材质包）
   game-type: moving-bar
   oscillate: true
   render-mode: bitmap
-  bar-length: 25
+  bar-length: 20
   unhit-length: 2
-  move-interval: 5
+  move-interval: 8
   timeout: 20
   cooldown: 3
   access-duration: 60
   access-once-window: 60
   interrupt-damage: true
   interrupt-move-range: 3.0
-4:
-  name: ride        # 骑乘：A/D 键手动控制游标（moving-bar）
+2:
+  name: moving-ride     # moving-bar 骑乘：A/D 键手动控制游标（ascii）
   game-type: moving-bar
   oscillate: false
   render-mode: ascii
@@ -76,8 +51,22 @@
   access-once-window: 60
   interrupt-damage: true
   interrupt-move-range: 3.0
-5:
-  name: rhythm      # 节奏新手：3 个判定点，ascii
+3:
+  name: moving-ride-bitmap # moving-bar 骑乘 + bitmap 位图（需材质包；静止时进度条由插件保活刷新）
+  game-type: moving-bar
+  oscillate: false
+  render-mode: bitmap
+  bar-length: 20
+  unhit-length: 3
+  move-interval: 6
+  timeout: 25
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+4:
+  name: rhythm          # rhythm-bar 往复 ascii：3 个判定点依次命中
   game-type: rhythm-bar
   oscillate: true
   render-mode: ascii
@@ -92,8 +81,8 @@
   access-once-window: 60
   interrupt-damage: true
   interrupt-move-range: 3.0
-6:
-  name: rhythm-master # 节奏大师：bitmap 位图 + 4 个判定点（需材质包）
+5:
+  name: rhythm-bitmap   # rhythm-bar 往复 + bitmap 位图 + 4 个判定点（需材质包）
   game-type: rhythm-bar
   oscillate: true
   render-mode: bitmap
@@ -108,11 +97,27 @@
   access-once-window: 60
   interrupt-damage: true
   interrupt-move-range: 3.0
-7:
-  name: rhythm-ride # 节奏骑乘：A/D 键手动控制游标（rhythm-bar）
+6:
+  name: rhythm-ride     # rhythm-bar 骑乘：A/D 键手动控制游标（ascii）
   game-type: rhythm-bar
   oscillate: false
   render-mode: ascii
+  bar-length: 20
+  hit-count: 3
+  hit-length: 2
+  hit-min-gap: 3
+  move-interval: 6
+  timeout: 25
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+7:
+  name: rhythm-ride-bitmap # rhythm-bar 骑乘 + bitmap 位图（需材质包）
+  game-type: rhythm-bar
+  oscillate: false
+  render-mode: bitmap
   bar-length: 20
   hit-count: 3
   hit-length: 2

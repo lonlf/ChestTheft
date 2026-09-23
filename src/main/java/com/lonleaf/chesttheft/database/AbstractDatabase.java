@@ -50,7 +50,7 @@ public abstract class AbstractDatabase implements Database {
                 + "x INT NOT NULL,"
                 + "y INT NOT NULL,"
                 + "z INT NOT NULL,"
-                + "lock_item TEXT NOT NULL DEFAULT '',"
+                + "lock_item TEXT NOT NULL,"   // 无默认值：MySQL 8.0.13+ 禁止 TEXT 列字面量默认值（写 DEFAULT '' 会建表失败），写入路径均显式传值
                 + "locker_uuid VARCHAR(36) NOT NULL DEFAULT '',"
                 + "lock_token VARCHAR(36) NOT NULL DEFAULT '',"
                 + "paired_count INT NOT NULL DEFAULT 0,"
@@ -61,6 +61,8 @@ public abstract class AbstractDatabase implements Database {
             stmt.executeUpdate(sql);
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_CREATE_TABLE_FAIL, TABLE), e);
+            // 建表失败必须中止启用：否则会在"表不存在"的状态下运行，锁实际并未生效
+            throw new IllegalStateException("Failed to create table " + TABLE, e);
         }
         // 临时授权记录表（崩溃残留清理用，独立一张表）
         String tempSql = "CREATE TABLE IF NOT EXISTS " + TEMP_GRANT_TABLE + " ("
@@ -71,12 +73,13 @@ public abstract class AbstractDatabase implements Database {
                 + "y INT NOT NULL,"
                 + "z INT NOT NULL,"
                 + "player VARCHAR(36) NOT NULL,"
-                + "extra TEXT NOT NULL DEFAULT ''"
+                + "extra TEXT NOT NULL"   // 无默认值：兼容 MySQL（TEXT 列禁止字面量默认值），写入路径均显式传值
                 + ")";
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(tempSql);
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_CREATE_TABLE_FAIL, TEMP_GRANT_TABLE), e);
+            throw new IllegalStateException("Failed to create table " + TEMP_GRANT_TABLE, e);
         }
         // 临时授权唯一索引（防重复记录）：两方言均用普通 CREATE INDEX，已存在时忽略错误，保证幂等
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
@@ -91,6 +94,19 @@ public abstract class AbstractDatabase implements Database {
         }
     }
 
+    /** NBT 字节序列化反射方法缓存（Paper API；非 Paper 环境为 null，自动回退 Yaml 序列化）。
+     *  getMethod 每次调用成本高，类加载时缓存一次。 */
+    private static final Method SERIALIZE_AS_BYTES = findItemStackMethod("serializeAsBytes");
+    private static final Method DESERIALIZE_BYTES = findItemStackMethod("deserializeBytes", byte[].class);
+
+    private static Method findItemStackMethod(String name, Class<?>... parameterTypes) {
+        try {
+            return ItemStack.class.getMethod(name, parameterTypes);
+        } catch (NoSuchMethodException e) {
+            return null; // 非 Paper 环境：序列化走 Yaml 回退
+        }
+    }
+
     /**
      * 物品序列化：优先 NBT 字节格式（Paper 反射 API，保留 PDC），失败时回退 Yaml（兼容旧数据）。
      */
@@ -98,15 +114,17 @@ public abstract class AbstractDatabase implements Database {
         if (item == null || item.getType().isAir()) {
             return "";
         }
-        try {
-            Method m = ItemStack.class.getMethod("serializeAsBytes");
-            byte[] bytes = (byte[]) m.invoke(item);
-            return "NBT:" + Base64.getEncoder().encodeToString(bytes);
-        } catch (Exception e) {
-            YamlConfiguration config = new YamlConfiguration();
-            config.set("item", item);
-            return config.saveToString();
+        if (SERIALIZE_AS_BYTES != null) {
+            try {
+                byte[] bytes = (byte[]) SERIALIZE_AS_BYTES.invoke(item);
+                return "NBT:" + Base64.getEncoder().encodeToString(bytes);
+            } catch (Exception e) {
+                // 反射调用失败：回退 Yaml（保留兼容性）
+            }
         }
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("item", item);
+        return config.saveToString();
     }
 
     /** 从存储字符串还原物品，空数据返回 null；兼容 NBT 字节与旧版 Yaml 两种格式。 */
@@ -114,16 +132,19 @@ public abstract class AbstractDatabase implements Database {
         if (data == null || data.isEmpty()) {
             return null;
         }
-        try {
-            if (data.startsWith("NBT:")) {
-                Method m = ItemStack.class.getMethod("deserializeBytes", byte[].class);
-                return (ItemStack) m.invoke(null, (Object) Base64.getDecoder().decode(data.substring(4)));
+        if (data.startsWith("NBT:")) {
+            if (DESERIALIZE_BYTES != null) {
+                try {
+                    return (ItemStack) DESERIALIZE_BYTES.invoke(null, (Object) Base64.getDecoder().decode(data.substring(4)));
+                } catch (Exception e) {
+                    return null;
+                }
             }
-            YamlConfiguration config = YamlConfiguration.loadConfiguration(new StringReader(data));
-            return config.getItemStack("item");
-        } catch (Exception e) {
+            // 非 Paper 环境无法解码 NBT 字节格式：按数据无效处理
             return null;
         }
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(new StringReader(data));
+        return config.getItemStack("item");
     }
 
     @Override
@@ -140,7 +161,8 @@ public abstract class AbstractDatabase implements Database {
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, location), e);
         }
-        return false;
+        // 读取失败必须 fail-closed：返回 false 会让数据库抖动期间所有锁失效（任何人可开任何箱子）
+        return true;
     }
 
     @Override
@@ -266,22 +288,60 @@ public abstract class AbstractDatabase implements Database {
     }
 
     @Override
-    public ItemStack unlock(BlockLocation location) {
-        ItemStack lockItem = getLockItem(location);
-        String sql = "DELETE FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
-        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, location.getWorld());
-            ps.setInt(2, location.getX());
-            ps.setInt(3, location.getY());
-            ps.setInt(4, location.getZ());
-            if (ps.executeUpdate() == 0) {
-                return null; // 无记录（未上锁）：不返还物品，避免"取到物品但未删除"造成的复制
+    public UnlockResult unlock(BlockLocation location) {
+        String selectSql = "SELECT lock_item FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
+        String deleteSql = "DELETE FROM " + TABLE + " WHERE world = ? AND x = ? AND y = ? AND z = ?";
+        // 读+删走同一连接，避免原先"两次取连接"之间被重新上锁而删掉新记录
+        try (Connection conn = getConnection()) {
+            String lockItemData;
+            try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+                bindLocation(ps, location);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        return UnlockResult.notFound();
+                    }
+                    lockItemData = rs.getString("lock_item");
+                }
             }
+            try (PreparedStatement ps = conn.prepareStatement(deleteSql)) {
+                bindLocation(ps, location);
+                if (ps.executeUpdate() == 0) {
+                    return UnlockResult.notFound();
+                }
+            }
+            return UnlockResult.deleted(deserializeItem(lockItemData));
         } catch (SQLException e) {
             logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_UNLOCK_FAIL, location), e);
-            return null; // 删除失败：不返还物品，避免复制
+            return UnlockResult.error();
         }
-        return lockItem;
+    }
+
+    /** 按 (world, x, y, z) 绑定四个占位符参数。 */
+    private static void bindLocation(PreparedStatement ps, BlockLocation location) throws SQLException {
+        ps.setString(1, location.getWorld());
+        ps.setInt(2, location.getX());
+        ps.setInt(3, location.getY());
+        ps.setInt(4, location.getZ());
+    }
+
+    @Override
+    public List<LockRecord> loadAllLocks() {
+        String sql = "SELECT world, x, y, z, lock_item, locker_uuid, lock_token, lock_level, paired_count FROM " + TABLE;
+        List<LockRecord> records = new ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                records.add(new LockRecord(
+                        BlockLocation.from(rs.getString("world"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z")),
+                        rs.getString("lock_item"), rs.getString("locker_uuid"), rs.getString("lock_token"),
+                        rs.getInt("lock_level"), rs.getInt("paired_count")));
+            }
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, Messages.getLog(Messages.LOG_DB_QUERY_STATE_FAIL, TABLE), e);
+            throw new IllegalStateException("Failed to load locks from " + TABLE, e);
+        }
+        return records;
     }
 
     @Override

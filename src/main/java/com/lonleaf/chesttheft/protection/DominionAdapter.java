@@ -9,12 +9,14 @@ import cn.lunadeer.dominion.api.dtos.flag.Flags;
 import cn.lunadeer.dominion.api.dtos.flag.PriFlag;
 import cn.lunadeer.dominion.events.dominion.DominionCreateEvent;
 import cn.lunadeer.dominion.providers.MemberProvider;
+import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.database.Database;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -35,8 +37,16 @@ public class DominionAdapter extends TempAccessAdapter implements Listener {
     /** 是否已注册监听。 */
     private boolean registered = false;
 
-    public DominionAdapter(Plugin plugin, Database database) {
+    private final PluginConfig config;
+    /** 同步等待 Dominion 异步授权接口的超时（毫秒）：Dominion 无同步 addMember API，事件内授权只能阻塞等待；
+     *  取配置 protection.dominion-sync-timeout（秒）作为上限（默认 1 秒），将最坏主线程卡顿从 3 秒降到 1 秒；
+     *  配置 0 时立即超时放弃授权并回滚（玩家本次打开被拦截，下次重试），彻底消除主线程卡顿。 */
+    private final long grantTimeoutMs;
+
+    public DominionAdapter(Plugin plugin, PluginConfig config, Database database) {
         super(plugin, database);
+        this.config = config;
+        this.grantTimeoutMs = Math.max(1, (long) (config.getDominionSyncTimeout() * 1000L));
     }
 
     /** 箱子开关 flag：4.9.4+ 为 CHEST，旧版仅 CONTAINER；反射探测，授予的 flag 必须与检查一致。 */
@@ -75,31 +85,34 @@ public class DominionAdapter extends TempAccessAdapter implements Listener {
     }
 
     @Override
-    protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
+    protected boolean revokeFromRecord(Block block, UUID playerUuid, String extra) {
         if (!isActive()) {
-            return;
+            return false;
         }
         DominionAPI api = DominionAPI.getInstance();
         DominionDTO dominion = api.getDominion(block.getLocation());
         if (dominion == null) {
-            return;
+            // 领地已不存在：无法确认恢复，保留记录下次重试
+            return false;
         }
         MemberDTO member = api.getMember(dominion, playerUuid);
         if (member == null) {
-            return; // 成员未成功添加，无残留
+            // 成员未成功添加（或异步撤销已完成），无残留，记录可安全删除
+            return true;
         }
         if ("1".equals(extra)) {
-            // 原本是成员：仅撤销容器 flag
-            setMemberFlagDirect(dominion, member, false);
-        } else {
-            // 临时添加的成员：撤销容器 flag 后移除成员
-            MemberProvider.getInstance().setMemberFlag(null, dominion, member, chestFlag(), false)
-                    .thenAccept(m -> {
-                        if (m != null) {
-                            MemberProvider.getInstance().removeMember(null, dominion, m);
-                        }
-                    });
+            // 原本是成员：仅撤销容器 flag（同步接口，返回是否确认成功）
+            return setMemberFlagDirect(dominion, member, false);
         }
+        // 临时添加的成员：官方接口为异步，无法同步确认撤销结果——保守保留记录，
+        // 下次启动时若异步撤销已完成（member==null）即可清理
+        MemberProvider.getInstance().setMemberFlag(null, dominion, member, chestFlag(), false)
+                .thenAccept(m -> {
+                    if (m != null) {
+                        MemberProvider.getInstance().removeMember(null, dominion, m);
+                    }
+                });
+        return false;
     }
 
     /** 注册 Dominion 领地创建事件监听（仅 Dominion 插件存在时）。 */
@@ -146,9 +159,6 @@ public class DominionAdapter extends TempAccessAdapter implements Listener {
         return new DomGrant(true, null, false);
     }
 
-    /** 同步等待 Dominion 异步授权接口的超时（秒）：超时后放弃授权并回滚，避免主线程无限阻塞。 */
-    private static final long GRANT_TIMEOUT_SECONDS = 3L;
-
     @Override
     protected void apply(Block block, Player player, TempGrant grant) {
         DomGrant domGrant = (DomGrant) grant;
@@ -172,7 +182,7 @@ public class DominionAdapter extends TempAccessAdapter implements Listener {
         MemberDTO addedMember;
         try {
             addedMember = MemberProvider.getInstance().addMember(null, dominion, playerDTO)
-                    .get(GRANT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    .get(grantTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw new IllegalStateException("添加领地成员失败: " + e.getMessage(), e);
         }
@@ -189,7 +199,7 @@ public class DominionAdapter extends TempAccessAdapter implements Listener {
             }
             try {
                 MemberProvider.getInstance().setMemberFlag(null, dominion, addedMember, chestFlag(), true)
-                        .get(GRANT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                        .get(grantTimeoutMs, TimeUnit.MILLISECONDS);
             } catch (Exception e) {
                 // flag 设置失败：移除刚添加的成员后抛出（基类会删除记录并中止授权）
                 MemberProvider.getInstance().removeMember(null, dominion, addedMember);
@@ -235,12 +245,14 @@ public class DominionAdapter extends TempAccessAdapter implements Listener {
         }
     }
 
-    /** 同步设置成员 flag（异常时回退官方异步接口）。 */
-    private void setMemberFlagDirect(DominionDTO dominion, MemberDTO member, boolean value) {
+    /** 同步设置成员 flag（异常时回退官方异步接口）；同步设置成功返回 true，回退异步返回 false（无法确认结果）。 */
+    private boolean setMemberFlagDirect(DominionDTO dominion, MemberDTO member, boolean value) {
         try {
             member.setFlagValue(chestFlag(), value);
+            return true;
         } catch (Exception e) {
             MemberProvider.getInstance().setMemberFlag(null, dominion, member, chestFlag(), value);
+            return false;
         }
     }
 
@@ -302,25 +314,17 @@ public class DominionAdapter extends TempAccessAdapter implements Listener {
         int maxChunkX = Math.floorDiv(cuboid.x2() - 1, 16);
         int minChunkZ = Math.floorDiv(cuboid.z1(), 16);
         int maxChunkZ = Math.floorDiv(cuboid.z2() - 1, 16);
-        int minY = Math.max(cuboid.y1(), world.getMinHeight());
-        int maxY = Math.min(cuboid.y2() - 1, world.getMaxHeight() - 1);
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
                 if (!world.isChunkLoaded(cx, cz)) continue;
                 Chunk chunk = world.getChunkAt(cx, cz);
-                for (int x = 0; x < 16; x++) {
-                    for (int z = 0; z < 16; z++) {
-                        for (int y = minY; y <= maxY; y++) {
-                            int bx = (cx << 4) + x;
-                            int bz = (cz << 4) + z;
-                            if (!inCuboid(cuboid, bx, y, bz)) continue;
-                            Block block = chunk.getBlock(x, y, z);
-                            if (isChest(block)) {
-                                // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
-                                // 仅对上锁的箱子执行自动卸锁
-                                protectionCreatedHandler.accept(block);
-                            }
-                        }
+                // 仅检查方块实体（箱子/陷阱箱均为方块实体），避免按区块全 Y 层遍历造成主线程卡顿
+                for (BlockState state : chunk.getTileEntities()) {
+                    Block block = state.getBlock();
+                    if (inCuboid(cuboid, block.getX(), block.getY(), block.getZ()) && isChest(block)) {
+                        // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
+                        // 仅对上锁的箱子执行自动卸锁
+                        protectionCreatedHandler.accept(block);
                     }
                 }
             }

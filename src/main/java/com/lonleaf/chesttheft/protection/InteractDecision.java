@@ -10,7 +10,6 @@ import org.bukkit.entity.Player;
  */
 public final class InteractDecision {
 
-    /** 决策类型。 */
     public enum Type {
         /** 放行：允许本次交互 / 上锁。 */
         ALLOW,

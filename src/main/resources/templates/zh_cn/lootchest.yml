@@ -59,6 +59,45 @@ default:
   drops:
     - zombie 0.01
     - "mythicmobs:example_mob 1"
+# ============================================
+# 测试档案（战利品箱持久化验证用）
+# 用法：
+#   /ct lootchest test_locked   → 需撬锁（level 2）的箱子
+#   /ct lootchest test_free     → 无需撬锁、直接打开的箱子（对照组）
+# 两个档案都未配置 drops，只用于命令生成，不影响生物死亡掉落的匹配顺序。
+# 验证完成后可整段删除。
+# ============================================
+test_locked:
+  title: "&c测试：需撬锁的战利品箱"
+  display-material: CHEST
+  # false：箱内只含下方物品，便于确认内容物跨重启保留
+  include-drops: false
+  chance: 1.0
+  # 需撬锁：服务器重启后仍应要求撬锁（持久化等级断言）
+  level: 2
+  open-effects:
+    glow: "RED 6"
+    particles: "FLAME 12"
+    sound: "BLOCK_CHEST_OPEN 1.0 1.0"
+  items:
+    - material: GOLD_INGOT
+      amount: 3
+    - material: DIAMOND
+      amount: 1
+      name: "&b测试用钻石"
+      lore:
+        - "&7用于确认箱内物品跨重启保留"
+
+test_free:
+  title: "&a测试：无需撬锁的战利品箱"
+  display-material: CHEST
+  include-drops: false
+  chance: 1.0
+  # 无需撬锁：右键应直接打开
+  level: -1
+  items:
+    - material: IRON_INGOT
+      amount: 2
 # 示例：单独为僵尸配置（同名生物类型均可单独配置）
 #zombie:
 #  title: "&c僵尸的战利品箱"

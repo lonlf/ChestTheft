@@ -16,6 +16,7 @@ import com.lonleaf.chesttheft.item.ItemManager;
 import com.lonleaf.chesttheft.item.ItemTagger;
 import com.lonleaf.chesttheft.lootchest.LootChestManager;
 import com.lonleaf.chesttheft.minigame.GameManager;
+import com.lonleaf.chesttheft.recipe.RecipeManager;
 import com.lonleaf.chesttheft.trigger.TriggerManager;
 import org.bukkit.command.PluginCommand;
 
@@ -34,12 +35,12 @@ public class CommandManager {
     public CommandManager(ChestTheft plugin, ItemManager itemManager, ItemTagger itemTagger,
                           ItemConfigManager itemConfigManager, PluginConfig config, GameManager gameManager,
                           LockConfigManager lockConfigManager, TriggerManager triggerManager,
-                          LootChestManager lootChestManager) {
+                          LootChestManager lootChestManager, RecipeManager recipeManager) {
         this.plugin = plugin;
         this.giveCommand = new GiveCommand(itemManager, itemConfigManager);
         this.setItemCommand = new SetItemCommand(itemTagger, itemConfigManager);
         this.checkCommand = new CheckCommand(itemManager);
-        this.reloadCommand = new ReloadCommand(config, itemConfigManager, gameManager, lockConfigManager, triggerManager, lootChestManager);
+        this.reloadCommand = new ReloadCommand(config, itemConfigManager, gameManager, lockConfigManager, triggerManager, lootChestManager, recipeManager);
         this.lootChestCommand = new LootChestCommand(lootChestManager);
         this.debugCommand = new DebugCommand(gameManager, lockConfigManager);
         registerCommands();

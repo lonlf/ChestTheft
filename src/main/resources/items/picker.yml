@@ -1,6 +1,17 @@
 # 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
 # 添加自定义物品：复制一份定义并修改 ID（如 picker002）与 name/material 等即可
+# material: 可写原版材质名（如 FISHING_ROD），也可写外部插件物品 ID（写法与战利品箱一致）：
+#           如 material: "ItemsAdder:ruby"、material: "CraftEngine:default:topaz"
+#           支持前缀：ItemsAdder / NeigeItems / MMOItems:<类型>:<ID> / MythicMobs / Nexo / Oraxen / CraftEngine
+#           写成外部物品时以该物品为基底（保留其模型与 NBT），解析失败回退该类型默认材质
 # level: 撬锁器等级，撬锁时生效等级 = 锁等级 - 撬锁器等级（越小越容易撬）
+# Special item config: multiple items per file, keyed by item ID
+# To add your own: copy a definition and change the ID (e.g. picker002), name, material, etc.
+# material: a vanilla material name (e.g. FISHING_ROD) or an external-plugin item id (same as loot chests):
+#           e.g. material: "ItemsAdder:ruby", material: "CraftEngine:default:topaz"
+#           prefixes: ItemsAdder / NeigeItems / MMOItems:<type>:<id> / MythicMobs / Nexo / Oraxen / CraftEngine
+#           an external item is used as the base (its model/NBT kept); falls back to the type default if unresolvable
+# level: picker level; effective level when picking = lock level - picker level (the smaller, the easier)
 picker001:
   type: picker
   name: "Example picker"

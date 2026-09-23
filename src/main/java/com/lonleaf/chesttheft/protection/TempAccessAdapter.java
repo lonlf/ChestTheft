@@ -17,14 +17,9 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * 领地类 / WorldGuard / NoBuildPlus 保护适配器基类：实现统一的"打开容器事件内临时授权"流程——
- * 先撤销残留授权 → 判定（{@link #prepare}）→ 落库（仅持久化型）→ 写入（{@link #apply}）→ 记录。
- * 授权在玩家交互事件链内同步完成（早于保护插件 NORMAL 检查），收回由
- * {@link ProtectionManager} 在打开动作完成后调度执行（下一 tick）。
- * 持久化型保护（Bolt/LWC/领地/区域，写入保护插件自身存储）授权前落库，崩溃后启动清理恢复残留；
- * 附件型保护（{@link #persistGrant} 返回 false）不落库，重启内存重置即清。
- * 子类仅需实现各插件的判定（{@link #prepare}）、写入（{@link #apply}）、恢复（{@link #revoke}）
- * 与序列化（{@link #serializeGrant} / {@link #revokeFromRecord}）细节。
+ * 领地类 / WorldGuard / NoBuildPlus 保护适配器基类：统一"打开容器事件内临时授权"流程
+ * （撤销残留授权 → 判定 → 落库(仅持久化型) → 写入 → 记录），收回由 {@link ProtectionManager}
+ * 下一 tick 执行。持久化型授权前落库，崩溃后启动清理恢复；附件型（persistGrant=false）不落库。
  */
 public abstract class TempAccessAdapter implements ProtectionAdapter {
 
@@ -61,8 +56,9 @@ public abstract class TempAccessAdapter implements ProtectionAdapter {
     /** 序列化授权前原状态（供崩溃后启动清理恢复）；仅 {@link #persistGrant} 返回 true 时调用。 */
     protected abstract String serializeGrant(TempGrant grant);
 
-    /** 依据数据库记录撤销崩溃残留的授权（玩家可能离线，用 UUID 级恢复；extra 为 {@link #serializeGrant} 序列化值）。 */
-    protected abstract void revokeFromRecord(Block block, UUID playerUuid, String extra);
+    /** 依据数据库记录撤销崩溃残留的授权（玩家可能离线，用 UUID 级恢复；extra 为 {@link #serializeGrant} 序列化值）。
+     *  恢复确认成功返回 true（调用方删除记录）；无法确认/失败返回 false（记录保留，下次启动重试）。 */
+    protected abstract boolean revokeFromRecord(Block block, UUID playerUuid, String extra);
 
     /** 本次授权是否需要落库（崩溃残留清理）；附件型保护（权限重启即清）返回 false。 */
     protected boolean persistGrant(TempGrant grant) {
@@ -83,7 +79,10 @@ public abstract class TempAccessAdapter implements ProtectionAdapter {
         Map<UUID, TempGrant> grants = temporaryGrants.get(location);
         TempGrant previous = grants == null ? null : grants.remove(uuid);
         if (previous != null) {
-            revokeGrant(block, player, previous);
+            if (!revokeGrant(block, player, previous)) {
+                // 撤销残留授权失败（如区块未加载无法访问）：恢复记录，后续再授权/禁用清理时重试
+                temporaryGrants.computeIfAbsent(location, k -> new HashMap<>()).put(uuid, previous);
+            }
             if (grants.isEmpty()) {
                 temporaryGrants.remove(location);
             }
@@ -142,24 +141,29 @@ public abstract class TempAccessAdapter implements ProtectionAdapter {
         if (grants.isEmpty()) {
             temporaryGrants.remove(location);
         }
-        if (grant != null) {
-            revokeGrant(block, player, grant);
+        if (grant != null && !revokeGrant(block, player, grant)) {
+            // 撤销失败：恢复记录供下次授权/插件禁用清理时重试，避免残留权限运行期无法撤销
+            temporaryGrants.computeIfAbsent(location, k -> new HashMap<>()).put(player.getUniqueId(), grant);
         }
     }
 
-    /** 撤销一次临时授权（异常隔离），并删除对应数据库记录。 */
-    private void revokeGrant(Block block, Player player, TempGrant grant) {
+    /** 撤销一次临时授权（异常隔离）：撤销成功后才删除数据库记录；
+     *  撤销失败（异常或无法访问）保留记录供启动 cleanupStale 兜底，并返回 false。 */
+    private boolean revokeGrant(Block block, Player player, TempGrant grant) {
         try {
             revoke(block, player, grant);
-        } catch (Exception e) {
-            plugin.getLogger().fine("撤销临时授权失败: " + e.getMessage());
-        }
-        if (persistGrant(grant) && database != null) {
-            try {
-                database.deleteTempGrant(pluginType(), BlockLocation.from(block), player.getUniqueId());
-            } catch (Exception e) {
-                plugin.getLogger().fine("清理临时授权记录失败: " + e.getMessage());
+            if (persistGrant(grant) && database != null) {
+                try {
+                    database.deleteTempGrant(pluginType(), BlockLocation.from(block), player.getUniqueId());
+                } catch (Exception e) {
+                    plugin.getLogger().fine("清理临时授权记录失败: " + e.getMessage());
+                }
             }
+            return true;
+        } catch (Exception e) {
+            // 撤销失败：不删除记录，保留给启动清理兜底，避免残留权限无法追踪
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_REVOKE_FAIL, e.getMessage()));
+            return false;
         }
     }
 
@@ -233,9 +237,13 @@ public abstract class TempAccessAdapter implements ProtectionAdapter {
             }
             Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
             try {
-                revokeFromRecord(block, record.getPlayerUuid(), record.getExtra());
-                database.deleteTempGrant(pluginType(), loc, record.getPlayerUuid());
-                plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_CLEANED, pluginType(), loc));
+                if (revokeFromRecord(block, record.getPlayerUuid(), record.getExtra())) {
+                    database.deleteTempGrant(pluginType(), loc, record.getPlayerUuid());
+                    plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_CLEANED, pluginType(), loc));
+                } else {
+                    // 恢复未确认成功（保护缺失/区块未加载等）：保留记录下次启动重试，避免授权残留无法追踪
+                    plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_STALE_KEEP, pluginType(), loc));
+                }
             } catch (Exception e) {
                 plugin.getLogger().warning(Messages.getLog(Messages.LOG_STALE_CLEAN_FAIL, e.getMessage()));
             }

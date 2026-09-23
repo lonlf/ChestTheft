@@ -8,8 +8,10 @@ import org.bukkit.block.Container;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 
@@ -36,6 +38,22 @@ public class KeyGlowListener implements Listener {
         if (block != null) {
             keyGlowTask.onChestClose(BlockLocation.from(block));
         }
+    }
+
+    /** 玩家开关门时：立即销毁该门的发光展示实体，5 tick 后按最新状态重生（由 KeyGlowTask.onDoorInteract 执行），
+     *  替代原先 KeyGlowTask 每 5 tick 轮询门状态的逻辑，事件驱动响应更快。 */
+    @EventHandler
+    public void onDoorInteract(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.isCancelled()) {
+            return;
+        }
+        Block block = event.getClickedBlock();
+        // 门（木门/铁门等上下半一体的 *_DOOR；陷阱门 *_TRAPDOOR 不在此列）
+        if (block == null || !block.getType().name().endsWith("_DOOR")
+                || block.getType().name().endsWith("_TRAPDOOR")) {
+            return;
+        }
+        keyGlowTask.onDoorInteract(BlockLocation.from(block));
     }
 
     /** 从容器库存反查一个箱子方块：单箱返回自身，双箱返回任意一侧（KeyGlowTask 会映射到统一发光 key）。 */

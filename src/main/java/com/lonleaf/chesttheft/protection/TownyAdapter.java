@@ -18,6 +18,7 @@ import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -87,18 +88,19 @@ public class TownyAdapter extends TempAccessAdapter implements Listener {
     }
 
     @Override
-    protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
+    protected boolean revokeFromRecord(Block block, UUID playerUuid, String extra) {
         if (!isActive()) {
-            return;
+            return false;
         }
         TownyAPI towny = TownyAPI.getInstance();
         TownBlock townBlock = towny.getTownBlock(block.getLocation());
         if (townBlock == null) {
-            return;
+            // 城镇地块已不存在：无法确认恢复，保留记录下次重试
+            return false;
         }
         Resident resident = towny.getResident(playerUuid);
         if (resident == null) {
-            return;
+            return false;
         }
         Map<Resident, PermissionData> overrides = new HashMap<>(townBlock.getPermissionOverrides());
         // 按玩家名先移除该玩家现有的覆盖条目，避免 Resident 实例变化导致新旧条目并存残留
@@ -109,6 +111,7 @@ public class TownyAdapter extends TempAccessAdapter implements Listener {
             overrides.put(resident, new PermissionData(types, playerUuid.toString()));
         }
         townBlock.setPermissionOverrides(overrides);
+        return true;
     }
 
     /** 解析序列化的权限类型数组（"SET,NOT_SET,..."），解析失败时回退默认类型。 */
@@ -154,10 +157,9 @@ public class TownyAdapter extends TempAccessAdapter implements Listener {
         TownBlock townBlock = towny.getTownBlock(block.getLocation());
         boolean debug = plugin.getConfig().getBoolean("debug", false);
         if (townBlock == null) {
-            // 野地（非城镇地块）：容器开关受 towny.wild.switch.<材料> 权限控制（Towny 按
-            // actionType.switch + 方块材料名拼接检查，如 towny.wild.switch.CHEST），
-            // 玩家已有该权限时无需授权；该权限为纯 Bukkit 权限，授予不依赖玩家是否为 Towny 居民
-            // （无居民记录时首次打开依赖 openInventory 绕过拦截，后续右键打开必须在此授权，否则被 Towny 拦下）
+            // 野地（非城镇地块）：容器开关受 towny.wild.switch.<材料> 权限控制（按方块材料拼接，
+            // 如 towny.wild.switch.CHEST），已有该权限无需授权；为纯 Bukkit 权限，不依赖 Towny 居民
+            // （无居民记录时首次打开靠 openInventory 绕过拦截，后续右键必须在此授权，否则被 Towny 拦下）
             String wildNode = "towny.wild.switch." + block.getType().name();
             boolean hasWild = player.hasPermission(wildNode);
             if (debug) {
@@ -345,23 +347,19 @@ public class TownyAdapter extends TempAccessAdapter implements Listener {
         int cz = townBlock.getZ();
         if (!world.isChunkLoaded(cx, cz)) return;
         Chunk chunk = world.getChunkAt(cx, cz);
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = world.getMinHeight(); y < world.getMaxHeight(); y++) {
-                    Block block = chunk.getBlock(x, y, z);
-                    if (isChest(block)) {
-                        // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
-                        // 仅对上锁的箱子执行自动卸锁
-                        protectionCreatedHandler.accept(block);
-                    }
-                }
+        // 只遍历方块实体（箱子为持久方块实体），替代全 Y 层 16x16x高 的 getBlock 遍历，
+        // 避免新建城镇/圈地时主线程卡顿（其余适配器均已采用同样方式）
+        for (BlockState state : chunk.getTileEntities()) {
+            if (isChest(state.getType())) {
+                // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
+                // 仅对上锁的箱子执行自动卸锁
+                protectionCreatedHandler.accept(state.getBlock());
             }
         }
     }
 
-    /** 判断方块是否为箱子（普通箱子或陷阱箱）。 */
-    private boolean isChest(Block block) {
-        Material type = block.getType();
+    /** 判断方块类型是否为箱子（普通箱子或陷阱箱）。 */
+    private boolean isChest(Material type) {
         return type == Material.CHEST || type == Material.TRAPPED_CHEST;
     }
 }

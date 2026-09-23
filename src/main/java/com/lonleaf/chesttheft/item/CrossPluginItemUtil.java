@@ -1,13 +1,14 @@
 package com.lonleaf.chesttheft.item;
 
+import com.lonleaf.chesttheft.config.Messages;
 import dev.lone.itemsadder.api.CustomStack;
 import io.lumine.mythic.bukkit.MythicBukkit;
 import io.th0rgal.oraxen.api.OraxenItems;
 import net.Indyuce.mmoitems.MMOItems;
 import net.Indyuce.mmoitems.api.Type;
 import net.Indyuce.mmoitems.api.player.PlayerData;
-import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
+import net.momirealms.craftengine.bukkit.item.BukkitItemDefinition;
 import net.momirealms.craftengine.core.util.Key;
 import com.nexomc.nexo.api.NexoItems;
 import com.nexomc.nexo.items.ItemBuilder;
@@ -18,9 +19,18 @@ import org.jetbrains.annotations.Nullable;
 import pers.neige.neigeitems.manager.ItemManager;
 
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
-/** 跨插件物品工具类，从其他物品插件获取物品 ItemStack（支持 ItemsAdder/NeigeItems/MMOItems/MythicMobs/Nexo/Oraxen/CraftEngine 前缀）。 */
+/** 跨插件物品工具类：按 ID 前缀（ItemsAdder/NeigeItems/MMOItems/MythicMobs/Nexo/Oraxen/CraftEngine）取物品。 */
 public final class CrossPluginItemUtil {
+
+    /** 已告警过的"前缀|原因"，同类失败只提示一次，避免刷屏。 */
+    private static final Set<String> REPORTED_FAILURES = ConcurrentHashMap.newKeySet();
+
+    /** 已提示过的"自动补全命名空间"类日志。 */
+    private static final Set<String> REPORTED_HINTS = ConcurrentHashMap.newKeySet();
 
     private CrossPluginItemUtil() {
     }
@@ -53,24 +63,40 @@ public final class CrossPluginItemUtil {
         String prefix = trimmed.substring(0, colonIdx).toUpperCase(Locale.ROOT);
         String rest = trimmed.substring(colonIdx + 1);
 
-        switch (prefix) {
-            case "ITEMSADDER":
-                return getItemsAdderItem(rest);
-            case "NEIGEITEMS":
-                return getNeigeItemsItem(rest, player);
-            case "MMOITEMS":
-                // 格式: MMOItems:<type>:<id>
-                return getMMOItemsItem(rest, player);
-            case "MYTHICMOBS":
-                return getMythicMobsItem(rest);
-            case "NEXO":
-                return getNexoItem(rest);
-            case "ORAXEN":
-                return getOraxenItem(rest);
-            case "CRAFTENGINE":
-                return getCraftEngineItem(rest);
-            default:
-                return null;
+        try {
+            switch (prefix) {
+                case "ITEMSADDER":
+                    return getItemsAdderItem(rest);
+                case "NEIGEITEMS":
+                    return getNeigeItemsItem(rest, player);
+                case "MMOITEMS":
+                    // 格式: MMOItems:<type>:<id>
+                    return getMMOItemsItem(rest, player);
+                case "MYTHICMOBS":
+                    return getMythicMobsItem(rest);
+                case "NEXO":
+                    return getNexoItem(rest);
+                case "ORAXEN":
+                    return getOraxenItem(rest);
+                case "CRAFTENGINE":
+                    return getCraftEngineItem(rest);
+                default:
+                    return null;
+            }
+        } catch (Throwable t) {
+            // API 版本漂移或插件内部异常：降级为"解析失败"，不冒泡到命令/事件
+            reportFailure(trimmed, prefix, t);
+            return null;
+        }
+    }
+
+    /** 输出一次解析失败告警（同前缀同原因只提示一次）。 */
+    private static void reportFailure(String id, String prefix, Throwable cause) {
+        String reason = cause.getClass().getSimpleName()
+                + (cause.getMessage() == null ? "" : ": " + cause.getMessage());
+        if (REPORTED_FAILURES.add(prefix + "|" + reason)) {
+            Bukkit.getLogger().log(Level.WARNING,
+                    Messages.getLog(Messages.LOG_ITEM_EXTERNAL_API_ERROR, id, reason));
         }
     }
 
@@ -127,14 +153,35 @@ public final class CrossPluginItemUtil {
         return item != null ? item.build() : null;
     }
 
+    /** CraftEngine 取物：byId(Key) 取定义 → buildBukkitItem()；key 缺命名空间时按物品名兜底匹配并提示完整 ID。 */
     @Nullable
     private static ItemStack getCraftEngineItem(String id) {
         if (Bukkit.getPluginManager().getPlugin("CraftEngine") == null) return null;
-        var key = Key.of(id);
-        var item = net.momirealms.craftengine.core.item.Item.byId(key);
-        if (item == null || item.isEmpty()) return null;
-        var bukkitStack = ItemStackUtils.getBukkitStack(item);
-        if (ItemStackUtils.isEmpty(bukkitStack)) return null;
-        return bukkitStack;
+        var definition = CraftEngineItems.byId(Key.of(id));
+        if (definition == null) {
+            definition = findCraftEngineItemByPath(id);
+        }
+        if (definition == null) return null;
+        ItemStack stack = definition.buildBukkitItem();
+        return stack == null || stack.getType().isAir() ? null : stack;
+    }
+
+    /** 在已加载物品中按物品名（path）匹配，仅配置未写命名空间时启用；同名多个取最靠前者并提示完整 ID。 */
+    @Nullable
+    private static BukkitItemDefinition findCraftEngineItemByPath(String path) {
+        if (path.indexOf(':') >= 0) return null;
+        for (Key key : CraftEngineItems.loadedItems().keySet()) {
+            if (!key.value().equalsIgnoreCase(path)) continue;
+            BukkitItemDefinition definition = CraftEngineItems.byId(key);
+            if (definition == null) continue;
+            String fullId = key.namespace() + ":" + key.value();
+            if (REPORTED_HINTS.add("CRAFTENGINE|" + path)) {
+                Bukkit.getLogger().log(Level.WARNING,
+                        Messages.getLog(Messages.LOG_ITEM_EXTERNAL_NAMESPACE_GUESSED, path, fullId));
+            }
+            return definition;
+        }
+        return null;
     }
 }
+

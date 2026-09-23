@@ -15,7 +15,6 @@ public final class ChatJson {
     private ChatJson() {
     }
 
-    /** 新建空构建器。 */
     public static ChatJson create() {
         return new ChatJson();
     }

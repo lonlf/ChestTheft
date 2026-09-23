@@ -139,15 +139,24 @@ public final class LootChestDisplay {
 
     // ==================== 发包工具 ====================
 
-    /** 向指定位置附近的玩家发送 PacketEvents 包。 */
+    /** 向指定位置附近的玩家发送 PacketEvents 包（chunk 级粗筛 + 精确距离，纯 Spigot 兼容）。 */
     private static void sendToNearby(Location loc, double radius, PacketWrapper<?>... wrappers) {
         World world = loc.getWorld();
         if (world == null) {
             return;
         }
         double radiusSq = radius * radius;
+        // chunk 级粗筛：远离的玩家用整数比较跳过，避免高在线大世界下对全体玩家做浮点距离计算
+        int chunkRadius = Math.max(1, (int) Math.ceil(radius / 16.0));
+        int cx = loc.getBlockX() >> 4;
+        int cz = loc.getBlockZ() >> 4;
         for (Player viewer : world.getPlayers()) {
-            if (viewer.getLocation().distanceSquared(loc) <= radiusSq) {
+            Location v = viewer.getLocation();
+            if (Math.abs((v.getBlockX() >> 4) - cx) > chunkRadius
+                    || Math.abs((v.getBlockZ() >> 4) - cz) > chunkRadius) {
+                continue;
+            }
+            if (v.distanceSquared(loc) <= radiusSq) {
                 for (PacketWrapper<?> wrapper : wrappers) {
                     PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, wrapper);
                 }

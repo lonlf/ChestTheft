@@ -1,3 +1,17 @@
+# 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
+# 添加自定义物品：复制一份定义并修改 ID（如 key002）与 name/material 等即可
+# material: 可写原版材质名（如 GOLD_NUGGET），也可写外部插件物品 ID（写法与战利品箱一致）：
+#           如 material: "ItemsAdder:ruby"、material: "CraftEngine:default:topaz"
+#           支持前缀：ItemsAdder / NeigeItems / MMOItems:<类型>:<ID> / MythicMobs / Nexo / Oraxen / CraftEngine:<namespace>:<id>
+#           写成外部物品时以该物品为基底（保留其模型与 NBT），解析失败（插件未装 / ID 有误）回退该类型默认材质
+# key 类型：钥匙。与箱子配对（或上锁时由锁自动生成）后，即可用交互键开锁或卸锁
+# Special item config: multiple items per file, keyed by item ID
+# To add your own: copy a definition and change the ID (e.g. key002), name, material, etc.
+# material: a vanilla material name (e.g. GOLD_NUGGET) or an external-plugin item id (same as loot chests):
+#           e.g. material: "ItemsAdder:ruby", material: "CraftEngine:default:topaz"
+#           prefixes: ItemsAdder / NeigeItems / MMOItems:<type>:<id> / MythicMobs / Nexo / Oraxen / CraftEngine:<namespace>:<id>
+#           an external item is used as the base (its model/NBT kept); falls back to the type default if unresolvable
+# key type: a key; once paired to a chest (or auto-generated when locking), it opens or unlocks the chest via the interaction key
 key001:
   type: key
   name: "Example key"
@@ -5,4 +19,17 @@ key001:
   customModelData: 13087
   lore:
     - "This is a example key001"
-    - "Use this to open or unlock chest."
+    - "Use this to open or unlock a LOCKED chest (right click)."
+# 外部插件物品示例 / external-plugin item examples:
+#key002:
+#  type: key
+#  name: "ItemsAdder key"
+#  material: "ItemsAdder:ruby"
+#  lore:
+#    - "Base item comes from ItemsAdder."
+#key003:
+#  type: key
+#  name: "CraftEngine key"
+#  material: "CraftEngine:default:topaz"
+#  lore:
+#    - "Base item comes from CraftEngine."

@@ -26,11 +26,9 @@ public interface ProtectionAdapter {
     UUID getOwnerUUID(Block block);
 
     /**
-     * 打开受保护容器前的临时授权入口（事件内授权）：先撤销上一次残留授权（防止旧授权覆盖新授权
-     * 导致本次打开失效），再按需授予新授权，使本次打开不被本插件拦截。
-     * 授权在玩家交互事件链内同步完成（早于保护插件 NORMAL 检查），收回由
-     * {@link ProtectionManager} 在打开动作完成后调度执行（下一 tick），不写库不持久化。
-     * 由 {@link ProtectionManager} 在 ChestOpenEvent 中统一调用。
+     * 打开受保护容器前的临时授权入口（事件内授权，早于保护插件 NORMAL 检查）：先撤销上一次
+     * 残留授权（防止旧授权覆盖新授权导致本次打开失效），再按需授予新授权。
+     * 收回由 {@link ProtectionManager} 在打开动作完成后下一 tick 统一调用（revokeAccess），不写库不持久化。
      */
     void grantOpenAccess(Block block, Player player);
 

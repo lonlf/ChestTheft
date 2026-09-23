@@ -32,6 +32,10 @@ public class MovingBarSession extends MiniGameSession {
     /** 骑乘模式：上一帧方向与步进冷却（仅主线程读写）。 */
     private int lastInputDirection;
     private int stepCooldown;
+    /** 骑乘模式：上次渲染时的光标位置（光标实际变化才重渲染进度条，避免每 tick 全量重建）。 */
+    private int lastRenderedCursor = -1;
+    /** 骑乘模式：光标未变化时的保活计数——静止不重发时标题 stay 过期会消失，按移动间隔周期重发进度条。 */
+    private int renderKeepAlive;
 
     public MovingBarSession(MiniGameContext context) {
         super(context);
@@ -73,10 +77,17 @@ public class MovingBarSession extends MiniGameSession {
     protected void onTick() {
         if (barConfig.isOscillate()) {
             moveCursor();
+            sendProgressBar();
         } else {
             applyKeyMovement();
+            // 骑乘模式：光标仅在方向输入达到移动间隔时位移，只在光标实际变化时重渲染进度条
+            // （消除每 tick 全量重建开销）；静止时不重发标题会随 stay 过期消失，故按移动间隔周期保活重发
+            if (cursorPos != lastRenderedCursor || ++renderKeepAlive >= barConfig.getMoveInterval()) {
+                lastRenderedCursor = cursorPos;
+                renderKeepAlive = 0;
+                sendProgressBar();
+            }
         }
-        sendProgressBar();
     }
 
     /** 往复模式：光标自动在两端间往返移动。 */

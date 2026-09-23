@@ -6,6 +6,7 @@ import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.protection.ApplicableRegionSet;
 import com.sk89q.worldguard.protection.managers.RegionManager;
+import com.sk89q.worldguard.protection.managers.storage.StorageException;
 import com.sk89q.worldguard.protection.regions.ProtectedRegion;
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
@@ -60,25 +61,28 @@ public class WorldGuardAdapter extends TempAccessAdapter {
     }
 
     @Override
-    protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
+    protected boolean revokeFromRecord(Block block, UUID playerUuid, String extra) {
         if (!isActive() || extra == null || extra.isEmpty()) {
-            return;
+            return false;
         }
         RegionManager manager = getRegionManager(block);
         if (manager == null) {
-            return;
+            // 区域管理器不可用：无法确认恢复，保留记录下次重试
+            return false;
+        }
+        for (String id : extra.split("\u0001", -1)) {
+            ProtectedRegion region = manager.getRegion(id);
+            if (region != null) {
+                region.getMembers().removePlayer(playerUuid);
+            }
         }
         try {
-            for (String id : extra.split("\u0001", -1)) {
-                ProtectedRegion region = manager.getRegion(id);
-                if (region != null) {
-                    region.getMembers().removePlayer(playerUuid);
-                }
-            }
             manager.save();
-        } catch (Exception e) {
-            plugin.getLogger().fine("清理 WorldGuard 残留成员失败: " + e.getMessage());
+        } catch (StorageException e) {
+            // 保存失败：恢复未持久化，无法确认成功，返回 false 保留记录下次启动重试
+            return false;
         }
+        return true;
     }
 
     @Override
@@ -130,19 +134,21 @@ public class WorldGuardAdapter extends TempAccessAdapter {
         if (!grant.granted || !isActive()) {
             return;
         }
-        // 仅移除本次临时添加的区域成员，避免误删玩家原本的成员身份
+        // 仅移除本次临时添加的区域成员，避免误删玩家原本的成员身份；
+        // 撤销失败（区域管理器不可用/保存失败）异常上抛，由基类 revokeGrant 判定失败并保留记录供启动清理重试
         WgGrant wgGrant = (WgGrant) grant;
+        RegionManager manager = getRegionManager(block);
+        if (manager == null) {
+            throw new IllegalStateException("WorldGuard region manager unavailable at " + block.getLocation());
+        }
+        for (ProtectedRegion region : wgGrant.addedRegions) {
+            region.getMembers().removePlayer(player.getUniqueId());
+        }
         try {
-            RegionManager manager = getRegionManager(block);
-            if (manager == null) {
-                return;
-            }
-            for (ProtectedRegion region : wgGrant.addedRegions) {
-                region.getMembers().removePlayer(player.getUniqueId());
-            }
             manager.save();
-        } catch (Exception e) {
-            plugin.getLogger().fine("撤销 WorldGuard 临时成员失败: " + e.getMessage());
+        } catch (StorageException e) {
+            // 保存失败视为撤销失败：异常上抛，由基类 revokeGrant 判定失败并保留记录供启动清理重试
+            throw new IllegalStateException("Failed to save WorldGuard regions after revoke at " + block.getLocation(), e);
         }
     }
 

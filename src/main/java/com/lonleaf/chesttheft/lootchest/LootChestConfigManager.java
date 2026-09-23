@@ -2,11 +2,13 @@ package com.lonleaf.chesttheft.lootchest;
 
 import com.lonleaf.chesttheft.ChestTheft;
 import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.config.TemplateFiles;
 import com.lonleaf.chesttheft.item.ItemManager;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -29,11 +31,19 @@ public class LootChestConfigManager {
         load();
     }
 
-    /** 保存默认模板（仅当 lootchest 目录下没有任何 yml 时创建）。 */
+    /** 保存默认模板 lootchest.yml（仅当 lootchest 目录下没有任何 yml 时创建；注释语言随当前语言）。 */
     private void saveDefault() {
         File[] files = lootDir.listFiles((dir, name) -> name.endsWith(".yml"));
         if (files == null || files.length == 0) {
-            plugin.saveResource("lootchest/lootchest.yml", false);
+            try {
+                String lang = plugin.getConfig().getString("language", "");
+                if (!TemplateFiles.saveTemplate(plugin, lang, "lootchest.yml",
+                        new File(lootDir, "lootchest.yml"))) {
+                    throw new IllegalStateException("Embedded template not found in jar: templates/*/lootchest.yml");
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to save default lootchest/lootchest.yml", e);
+            }
         }
     }
 

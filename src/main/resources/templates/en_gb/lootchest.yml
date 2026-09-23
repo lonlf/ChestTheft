@@ -1,0 +1,124 @@
+# ============================================
+# Loot Chest Profiles
+#
+# Every yml under this folder (lootchest/) is loaded; the profile ID (top-level key) is the primary key.
+# When a mob dies, its entry in each profile's drops list is matched:
+#   drops:
+#     - zombie 0.01                     # Bukkit entity type name (lowercase)  chance
+#     - "mythicmobs:example_mob 1"      # External-plugin entity (e.g. MythicMobs) identifier  chance
+# Matching: all profiles are scanned in order and the first profile whose drops entry matches is used.
+# If nothing matches, vanilla natural drops are kept.
+#
+# Items in a profile support three forms:
+#   - id: reference an item definition in the items/ folder (e.g. id: key001)
+#   - id: reference an external-plugin item (e.g. id: "MMOItems:SWORD:example_item")
+#   - material: use a vanilla material directly (e.g. material: DIAMOND)
+# Optional fields: amount (default 1), chance (spawn chance 0~1, default 1), name (display name), lore (lore lines), customModelData
+#
+# External item id formats (case-insensitive):
+#   ItemsAdder:   id: "ItemsAdder:<item-id>"
+#   NeigeItems:   id: "NeigeItems:<item-id>"
+#   MMOItems:     id: "MMOItems:<type>:<item-id>" (e.g. MMOItems:SWORD:legendary_sword)
+#   MythicMobs:   id: "MythicMobs:<item-id>"
+#   Nexo:         id: "Nexo:<item-id>"
+#   Oraxen:       id: "Oraxen:<item-id>"
+#   CraftEngine:  id: "CraftEngine:<item-id>"
+# ============================================
+
+# Default profile: fallback for other uses (e.g. commands)
+default:
+  # Chest GUI title (supports & color codes)
+  title: "&8Loot Chest"
+  # Display material: the block shown by the display entity in display mode (must be CHEST/TRAPPED_CHEST/BARREL in block mode)
+  display-material: CHEST
+  # Whether the mob's natural drops are stored into the chest (false: the chest only contains the items configured below)
+  include-drops: true
+  # Spawn chance (0~1; 1 = always spawns)
+  chance: 1.0
+  # Picking level: -1 = open directly without picking; >= 0 = the picking minigame must be completed first
+  # (the difficulty comes from the matching level in gamelevel/; it falls back level by level when the level is not configured)
+  level: -1
+  # Opening effects (optional): each is a single-line config, parameters separated by spaces; omitted parameters use defaults.
+  # Glow and particles are off unless configured; the opening sound is always on and defaults to BLOCK_CHEST_OPEN.
+  open-effects:
+    glow: "GOLD 6"                     # glow color duration-ticks (a color name like GOLD/RED/AQUA, or a #RRGGBB hex; display mode only, default duration 6)
+    particles: "CLOUD 12"              # particle type count (Particle enum; default count 12)
+    sound: "BLOCK_CHEST_OPEN 1.0 1.0"  # sound volume pitch (Sound enum; default volume/pitch 1.0, the type alone also works)
+  # Extra items inside the chest
+  items:
+    - material: GOLD_INGOT
+      amount: 3
+      chance: 1
+    - material: DIAMOND
+      amount: 1
+      name: "&bShiny Diamond"
+      lore:
+        - "&7A rare drop from a loot chest"
+    - id: key001
+      amount: 1
+  drops:
+    - zombie 0.01
+    - "mythicmobs:example_mob 1"
+# ============================================
+# Test profiles (for verifying loot chest persistence)
+# Usage:
+#   /ct lootchest test_locked   -> chest that requires picking (level 2)
+#   /ct lootchest test_free     -> chest that opens directly (control case)
+# Neither profile declares drops, so mob-death matching order is unaffected.
+# Delete this whole block once verification is done.
+# ============================================
+test_locked:
+  title: "&cTEST: loot chest (requires picking)"
+  display-material: CHEST
+  # false: the chest contains only the items below, so contents are easy to verify
+  include-drops: false
+  chance: 1.0
+  # requires picking: after a server restart it must still require picking
+  level: 2
+  open-effects:
+    glow: "RED 6"
+    particles: "FLAME 12"
+    sound: "BLOCK_CHEST_OPEN 1.0 1.0"
+  items:
+    - material: GOLD_INGOT
+      amount: 3
+    - material: DIAMOND
+      amount: 1
+      name: "&bTest Diamond"
+      lore:
+        - "&7Confirms the contents survive a restart"
+
+test_free:
+  title: "&aTEST: loot chest (no picking)"
+  display-material: CHEST
+  include-drops: false
+  chance: 1.0
+  # no picking: right click must open it directly
+  level: -1
+  items:
+    - material: IRON_INGOT
+      amount: 2
+# Example: a profile for zombies alone (each mob type can be configured individually)
+#zombie:
+#  title: "&cZombie Loot Chest"
+#  display-material: CHEST
+#  include-drops: true
+#  chance: 0.5
+#  level: 2          # requires picking (level 2 difficulty)
+#  items:
+#    - material: ROTTEN_FLESH
+#      amount: 2
+#
+#Example:
+#items:
+#  - id: "MMOItems:SWORD:legendary_sword"
+#    amount: 1
+#    name: "&cLegendary Sword"       # optional display-name override
+#    lore:
+#      - "&7A rare drop from a loot chest"  # optional lore override
+#
+#  - id: "ItemsAdder:ruby"
+#    amount: 3
+#
+#  - id: "Nexo:mythril_ingot"
+#    amount: 5

@@ -17,10 +17,9 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * LWC 保护插件适配器：通过 ModuleLoader 脚本模块订阅保护注册后回调（onPostRegistration），
- * 已上锁箱子被 LWC 保护且关闭撬锁时自动卸锁（逻辑由 {@link ProtectionManager} 提供）。
- * 同时打开受 LWC 保护箱子时事件内临时授予玩家访问权限（volatile Permission，持久化写入 LWC 库），
- * 收回（下一 tick）时移除；授权前落库，崩溃后启动清理残留权限。
+ * LWC 保护插件适配器：通过 ModuleLoader 脚本模块订阅保护注册后回调自动卸锁（逻辑由
+ * {@link ProtectionManager} 提供）。打开受 LWC 保护的箱子时事件内临时授予玩家访问权限
+ * （volatile Permission，持久化写入 LWC 库），收回（下一 tick）时移除；授权前落库，崩溃后启动清理。
  */
 public class LwcAdapter implements ProtectionAdapter {
 
@@ -84,7 +83,10 @@ public class LwcAdapter implements ProtectionAdapter {
         Map<UUID, Boolean> grants = temporaryGrants.get(location);
         Boolean previous = grants == null ? null : grants.remove(uuid);
         if (previous != null) {
-            revokeGrant(block, uuid, previous);
+            if (previous && !revokeGrant(block, uuid, true)) {
+                // 撤销残留授权失败：恢复记录，后续再授权/禁用清理时重试
+                temporaryGrants.computeIfAbsent(location, k -> new HashMap<>()).put(uuid, previous);
+            }
             if (grants.isEmpty()) {
                 temporaryGrants.remove(location);
             }
@@ -107,11 +109,19 @@ public class LwcAdapter implements ProtectionAdapter {
                     protection.save();
                     granted = true;
                 } catch (Exception e) {
+                    // 落盘失败：内存权限已生效，必须定向回滚并回读确认；
+                    // 回滚成功才删记录（无权限无记录），否则保留记录并标记已授权，交给撤销/启动清理重试
                     plugin.getLogger().fine("LWC temp grant failed: " + e.getMessage());
-                    // 授权写入失败：删除记录避免留下无权限的无效记录
-                    try {
-                        database.deleteTempGrant(pluginType(), location, uuid);
-                    } catch (Exception ignored) {
+                    if (rollbackGrant(protection, playerName)) {
+                        granted = false;
+                        try {
+                            database.deleteTempGrant(pluginType(), location, uuid);
+                        } catch (Exception ignored) {
+                        }
+                    } else {
+                        granted = true;
+                        plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_STALE_KEEP,
+                                pluginType(), location));
                     }
                 }
             }
@@ -138,37 +148,54 @@ public class LwcAdapter implements ProtectionAdapter {
         if (grants.isEmpty()) {
             temporaryGrants.remove(location);
         }
-        if (granted != null && granted) {
-            revokeGrantByLocation(location, player.getUniqueId());
+        if (granted != null && granted && !revokeGrantByLocation(location, player.getUniqueId())) {
+            // 撤销失败（保护已消失/区块未加载）：恢复记录供下次授权/插件禁用清理时重试
+            temporaryGrants.computeIfAbsent(location, k -> new HashMap<>()).put(player.getUniqueId(), granted);
         }
     }
 
-    /** 按位置与 UUID 撤销临时授权。 */
-    private void revokeGrantByLocation(BlockLocation location, UUID uuid) {
+    /** 按位置与 UUID 撤销临时授权；无法访问时返回 false。 */
+    private boolean revokeGrantByLocation(BlockLocation location, UUID uuid) {
         if (lwc == null) {
-            return;
+            return false;
         }
         try {
             World world = location.toWorld();
             if (world == null) {
-                return;
+                return false;
             }
-            revokeGrant(world.getBlockAt(location.getX(), location.getY(), location.getZ()), uuid, true);
+            return revokeGrant(world.getBlockAt(location.getX(), location.getY(), location.getZ()), uuid, true);
         } catch (Exception e) {
             plugin.getLogger().fine("LWC temp revoke failed: " + e.getMessage());
+            return false;
         }
     }
 
-    /** 撤销单次临时授权记录。 */
-    private void revokeGrant(Block block, UUID uuid, boolean granted) {
+    /** 定向回滚刚写入的 PLAYER 级临时权限并回读确认：真正撤销成功才返回 true。
+     *  只移除该玩家的权限，不使用 removeTemporaryPermissions（会连带清掉他人/其它插件的 volatile 权限）。 */
+    private boolean rollbackGrant(com.griefcraft.model.Protection protection, String playerName) {
+        try {
+            protection.removePermissions(playerName, com.griefcraft.model.Permission.Type.PLAYER);
+            protection.save();
+            return protection.getAccess(playerName, com.griefcraft.model.Permission.Type.PLAYER)
+                    != com.griefcraft.model.Permission.Access.PLAYER;
+        } catch (Exception e) {
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_REVOKE_FAIL, e.getMessage()));
+            return false;
+        }
+    }
+
+    /** 撤销单次临时授权记录：撤销成功才删除数据库记录；
+     *  保护已消失/撤销失败返回 false，记录保留供启动清理兜底。 */
+    private boolean revokeGrant(Block block, UUID uuid, boolean granted) {
         if (!granted || lwc == null) {
-            return;
+            return true;
         }
         try {
             com.griefcraft.lwc.LWC lwcInstance = (com.griefcraft.lwc.LWC) lwc;
             com.griefcraft.model.Protection protection = lwcInstance.findProtection(block);
             if (protection == null) {
-                return;
+                return false;
             }
             // 撤销所有临时（volatile）权限
             protection.removeTemporaryPermissions();
@@ -179,8 +206,10 @@ public class LwcAdapter implements ProtectionAdapter {
             } catch (Exception e) {
                 plugin.getLogger().fine("清理临时授权记录失败: " + e.getMessage());
             }
+            return true;
         } catch (Exception e) {
             plugin.getLogger().fine("LWC temp revoke failed: " + e.getMessage());
+            return false;
         }
     }
 
@@ -271,24 +300,29 @@ public class LwcAdapter implements ProtectionAdapter {
             }
             Block block = world.getBlockAt(loc.getX(), loc.getY(), loc.getZ());
             try {
-                revokeFromRecord(block);
-                database.deleteTempGrant(pluginType(), loc, record.getPlayerUuid());
-                plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_CLEANED, pluginType(), loc));
+                if (revokeFromRecord(block)) {
+                    database.deleteTempGrant(pluginType(), loc, record.getPlayerUuid());
+                    plugin.getLogger().info(Messages.getLog(Messages.LOG_STALE_CLEANED, pluginType(), loc));
+                } else {
+                    // 恢复未确认成功（保护已消失）：保留记录下次启动重试，避免授权残留无法追踪
+                    plugin.getLogger().warning(Messages.getLog(Messages.LOG_TEMP_STALE_KEEP, pluginType(), loc));
+                }
             } catch (Exception e) {
                 plugin.getLogger().warning(Messages.getLog(Messages.LOG_STALE_CLEAN_FAIL, e.getMessage()));
             }
         }
     }
 
-    /** 依据记录撤销崩溃残留的 LWC 临时授权：移除保护上的全部临时（volatile）权限。 */
-    private void revokeFromRecord(Block block) {
+    /** 依据记录撤销崩溃残留的 LWC 临时授权：移除保护上的全部临时（volatile）权限；恢复成功返回 true。 */
+    private boolean revokeFromRecord(Block block) {
         com.griefcraft.lwc.LWC lwcInstance = (com.griefcraft.lwc.LWC) lwc;
         com.griefcraft.model.Protection protection = lwcInstance.findProtection(block);
         if (protection == null) {
-            return;
+            return false;
         }
         protection.removeTemporaryPermissions();
         protection.save();
+        return true;
     }
 
     // ==================== LWC 保护创建回调 ====================
@@ -352,8 +386,9 @@ public class LwcAdapter implements ProtectionAdapter {
             public void onPostRegistration(com.griefcraft.scripting.event.LWCProtectionRegistrationPostEvent event) {
                 try {
                     com.griefcraft.model.Protection protection = event.getProtection();
-                    if (protection != null) {
-                        protectionCreatedHandler.accept(protection.getBlock());
+                    // LWC 事件回调线程不保证为主线程：自动卸锁涉及 DB 写与掉落物，调度回主线程执行
+                    if (protection != null && plugin.isEnabled()) {
+                        Bukkit.getScheduler().runTask(plugin, () -> protectionCreatedHandler.accept(protection.getBlock()));
                     }
                 } catch (Exception e) {
                     plugin.getLogger().warning(Messages.getLog(Messages.LOG_PROTECTION_CALLBACK_FAIL, "LWC", e.getMessage()));

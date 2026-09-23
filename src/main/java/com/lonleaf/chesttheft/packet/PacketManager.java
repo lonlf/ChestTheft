@@ -177,13 +177,9 @@ public class PacketManager implements PacketListener {
         };
         String typeLine = Messages.get(Messages.LORE_TYPE, typeName);
         String notPairedLine = Messages.get(Messages.LORE_NOT_PAIRED);
-        // 幂等：移除已残留的旧注入行（空行、类型行、配对/未配对行），防止被污染的物品重复追加
-        String pairedPrefix = Messages.get(Messages.LORE_PAIRED, "");
+        // 幂等：先移除残留注入行再追加；必须语言无关，否则切换语言后旧语言的行会残留成重复
         List<String> lore = new ArrayList<>(meta.hasLore() ? meta.getLore() : List.of());
-        lore.removeIf(line -> line.isEmpty()
-                || line.equals(typeLine)
-                || line.equals(notPairedLine)
-                || line.startsWith(pairedPrefix));
+        lore.removeIf(Messages::isInjectedLoreLine);
         lore.add("");
         lore.add(typeLine);
         if (type == ItemType.KEY) {

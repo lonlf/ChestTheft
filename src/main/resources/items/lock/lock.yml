@@ -1,12 +1,29 @@
 # 特殊物品配置：每个文件可定义多个物品，以物品ID作为键
 # 添加自定义物品：复制一份定义并修改 ID（如 lock002）与 name/material 等即可
-# level: 锁等级（数字，对应 gamelevel/lock.yml 中的等级键），未配置时撬锁使用默认难度
+# material: 可写原版材质名（如 IRON_INGOT），也可写外部插件物品 ID（写法与战利品箱一致）：
+#           如 material: "ItemsAdder:ruby"、material: "CraftEngine:default:topaz"
+#           支持前缀：ItemsAdder / NeigeItems / MMOItems:<类型>:<ID> / MythicMobs / Nexo / Oraxen / CraftEngine
+#           写成外部物品时以该物品为基底（保留其模型与 NBT），解析失败回退该类型默认材质
+# level: 锁等级（数字，对应 gamelevel/locklevel.yml 中的等级键），未配置时撬锁使用默认难度
 # give-key: 上锁完成后自动给予配对此锁的钥匙物品 ID（如 key001）；省略或留空则不给予
 # triggers: 锁物品自带的多个触发器（可选）。每个触发器以 id 为主键，支持两种形式：
 #   1. 引用形式：值为 trigger 文件夹中已配置的全局触发器 id 列表，按被引用触发器自身的 type 触发
 #   2. 内嵌定义形式：含 type（success/fail/cancel/interrupted/lock/key-open/key-pair）与 actions
 #      （动作组，动作id -> type/value/chance）
 #   可配置多个触发器，同类型可多个。上锁后玩家与该锁交互时，存在对应类型的触发器才触发。
+# Special item config: multiple items per file, keyed by item ID
+# To add your own: copy a definition and change the ID (e.g. lock002), name, material, etc.
+# material: a vanilla material name (e.g. IRON_INGOT) or an external-plugin item id (same as loot chests):
+#           e.g. material: "ItemsAdder:ruby", material: "CraftEngine:default:topaz"
+#           prefixes: ItemsAdder / NeigeItems / MMOItems:<type>:<id> / MythicMobs / Nexo / Oraxen / CraftEngine
+#           an external item is used as the base (its model/NBT kept); falls back to the type default if unresolvable
+# level: lock level (number, matching a level key in gamelevel/locklevel.yml); when unset, picking uses the default difficulty
+# give-key: item ID of the key auto-given after locking, paired to this lock (e.g. key001); omit or leave empty to give none
+# triggers: optional triggers attached to the lock item. Each trigger is keyed by its id and supports two forms:
+#   1. Reference form: a list of global trigger ids configured in the trigger folder; each fires by the referenced trigger's own type
+#   2. Inline definition form: contains type (success/fail/cancel/interrupted/lock/key-open/key-pair) and actions
+#      (action group: action id -> type/value/chance)
+#   Multiple triggers are allowed, several of the same type. After locking, a trigger only fires when the player interacts with this lock and its type matches.
 lock001:
   type: lock
   name: "Example lock"
@@ -16,7 +33,7 @@ lock001:
   # give-key: key001
   lore:
     - "This is a example lock001"
-    - "Right click an unlocked chest to lock it."
+    - "Left click an unlocked chest to lock it."
   triggers:
     example_trigger_ref:
       - example_success

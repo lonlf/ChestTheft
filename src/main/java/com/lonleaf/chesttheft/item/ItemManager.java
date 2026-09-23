@@ -1,17 +1,23 @@
 package com.lonleaf.chesttheft.item;
 
+import com.lonleaf.chesttheft.config.Messages;
 import com.lonleaf.chesttheft.model.BlockLocation;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 public class ItemManager {
     private final ItemTagger tagger;
     private final ItemConfigManager configManager;
+    private final Set<String> reportedExternalFailures = ConcurrentHashMap.newKeySet();
 
     public ItemManager(ItemTagger tagger, ItemConfigManager configManager) {
         this.tagger = tagger;
@@ -24,7 +30,7 @@ public class ItemManager {
         if (def == null) {
             return null;
         }
-        ItemStack item = new ItemStack(def.getMaterial(), Math.max(1, amount));
+        ItemStack item = createBase(def, Math.max(1, amount));
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             if (def.getName() != null) {
@@ -42,6 +48,31 @@ public class ItemManager {
         }
         tagger.tag(item, def.getId());
         return item;
+    }
+
+    /** 构建物品基底：material 为外部插件物品时按其原始 NBT 构建，解析失败回退 {@link ItemDefinition#getMaterial()}。 */
+    private ItemStack createBase(ItemDefinition def, int amount) {
+        String externalId = def.getExternalId();
+        if (externalId != null) {
+            ItemStack external = CrossPluginItemUtil.getItem(externalId, null);
+            if (external != null) {
+                // 克隆后再改动，避免污染外部插件返回的缓存实例
+                ItemStack base = external.clone();
+                base.setAmount(amount);
+                return base;
+            }
+            // 解析失败时补一条运行期告警（同一物品一次），否则管理员只看到物品变成兜底材质而不知原因
+            if (reportedExternalFailures.add(def.getId())) {
+                Bukkit.getLogger().log(Level.WARNING, Messages.getLog(Messages.LOG_ITEM_EXTERNAL_UNRESOLVED,
+                        def.getId(), externalId, def.getMaterial()));
+            }
+        }
+        return new ItemStack(def.getMaterial(), amount);
+    }
+
+    /** 物品定义（供命令诊断），未定义返回 null。 */
+    public ItemDefinition getDefinition(String id) {
+        return configManager.getDefinition(id);
     }
 
     /** 构建某类型的默认物品（该类型首个加载的定义），无定义时返回 null。 */

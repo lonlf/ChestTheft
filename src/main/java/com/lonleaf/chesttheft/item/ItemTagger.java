@@ -41,13 +41,12 @@ public class ItemTagger {
         return meta.getPersistentDataContainer().get(idKey, PersistentDataType.STRING);
     }
 
+    /** 写入钥匙配对信息（配对凭证必填：钥匙可用性依赖 token 与锁当前凭证一致，凭证缺失的配对无意义）。 */
     public void setPairedLock(ItemStack item, BlockLocation location, String token) {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.getPersistentDataContainer().set(lockKey, PersistentDataType.STRING, location.toString());
-            if (token != null) {
-                meta.getPersistentDataContainer().set(tokenKey, PersistentDataType.STRING, token);
-            }
+            meta.getPersistentDataContainer().set(tokenKey, PersistentDataType.STRING, token);
             item.setItemMeta(meta);
         }
     }

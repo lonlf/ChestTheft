@@ -14,22 +14,32 @@ public class LootChest {
     private final UUID uuid;
     private volatile Location location;
     private final LootChestProfile profile;
+    /** 有效撬锁等级（-1 = 无需撬锁）：档案存在时取档案等级，档案缺失时取持久化元数据。 */
+    private final int level;
     private final long created;
     private volatile boolean looted;
     private volatile long lootedAt;
     private volatile Inventory inventory;
-    /** display 模式的展示实体 ID（纯客户端实体，服务端无实体对象）。 */
     private volatile int displayEntityId = -1;
-    /** display 模式的交互载体实体 ID（纯客户端实体，服务端无实体对象）。 */
     private volatile int interactEntityId = -1;
     private volatile Block chestBlock;
 
     public LootChest(Location location, Inventory inventory, LootChestProfile profile) {
+        this(location, inventory, profile, profile == null ? -1 : profile.getLevel(),
+                System.currentTimeMillis(), false, 0L);
+    }
+
+    /** 恢复用构造：按持久化元数据还原等级/创建时间/已开状态（区块重载或服务器重启后）。 */
+    public LootChest(Location location, Inventory inventory, LootChestProfile profile,
+                     int level, long created, boolean looted, long lootedAt) {
         this.uuid = UUID.randomUUID();
         this.location = location.clone();
         this.inventory = inventory;
         this.profile = profile;
-        this.created = System.currentTimeMillis();
+        this.level = level;
+        this.created = created;
+        this.looted = looted;
+        this.lootedAt = lootedAt;
     }
 
     /** 打开箱子（display 模式调用）；block 模式由原版交互打开。 */
@@ -70,6 +80,11 @@ public class LootChest {
     /** 配置档案，未配置时（default 缺失）为 null。 */
     public LootChestProfile getProfile() {
         return profile;
+    }
+
+    /** 有效撬锁等级（-1 = 无需撬锁）；档案被删除时仍由持久化元数据保持门槛。 */
+    public int getEffectiveLevel() {
+        return level;
     }
 
     public long getCreated() {

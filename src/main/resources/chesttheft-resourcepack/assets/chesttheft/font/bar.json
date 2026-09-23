@@ -1,0 +1,58 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "chesttheft:font/bar_cell.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\uE100\uE101\uE106\uE103\uE102"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "chesttheft:font/bar_edge.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\uE104\uE105"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "chesttheft:font/tumbler_a.png",
+      "ascent": 64,
+      "height": 96,
+      "chars": [
+        "\uE120\uE121\uE122\uE123\uE124"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "chesttheft:font/tumbler_a_special.png",
+      "ascent": 64,
+      "height": 96,
+      "chars": [
+        "\uE125\uE126\uE127\uE128\uE129"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "chesttheft:font/tumbler_b.png",
+      "ascent": 64,
+      "height": 96,
+      "chars": [
+        "\uE130\uE131\uE132\uE133\uE134"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "chesttheft:font/tumbler_bg.png",
+      "ascent": 64,
+      "height": 96,
+      "chars": [
+        "\uE140"
+      ]
+    }
+  ]
+}

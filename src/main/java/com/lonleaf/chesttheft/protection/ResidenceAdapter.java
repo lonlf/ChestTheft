@@ -12,6 +12,7 @@ import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -62,18 +63,20 @@ public class ResidenceAdapter extends TempAccessAdapter implements Listener {
     }
 
     @Override
-    protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
+    protected boolean revokeFromRecord(Block block, UUID playerUuid, String extra) {
         if (Bukkit.getPluginManager().getPlugin("Residence") == null) {
-            return;
+            return false;
         }
         ClaimedResidence res = ResidenceApi.getResidenceManager().getByLoc(block.getLocation());
         if (res == null) {
-            return;
+            // 领地已不存在：无法确认恢复，保留记录下次重试
+            return false;
         }
         FlagPermissions perms = res.getPermissions();
         FlagPermissions.FlagState state = (extra == null || extra.isEmpty())
                 ? FlagPermissions.FlagState.NEITHER : FlagPermissions.FlagState.FALSE;
         perms.setPlayerFlag(playerUuid, Flags.container.getName(), state);
+        return true;
     }
 
     /** 注册 Residence 领地创建事件监听（仅 Residence 插件存在时）。 */
@@ -189,16 +192,13 @@ public class ResidenceAdapter extends TempAccessAdapter implements Listener {
             int cz = chunkRef.getZ();
             if (!world.isChunkLoaded(cx, cz)) continue;
             Chunk chunk = world.getChunkAt(cx, cz);
-            for (int x = 0; x < 16; x++) {
-                for (int z = 0; z < 16; z++) {
-                    for (int y = world.getMinHeight(); y < world.getMaxHeight(); y++) {
-                        Block block = chunk.getBlock(x, y, z);
-                        if (isChest(block) && res.containsLoc(block.getLocation())) {
-                            // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
-                            // 仅对上锁的箱子执行自动卸锁
-                            protectionCreatedHandler.accept(block);
-                        }
-                    }
+            // 仅检查方块实体（箱子/陷阱箱均为方块实体），避免按区块全 Y 层遍历造成主线程卡顿
+            for (BlockState state : chunk.getTileEntities()) {
+                Block block = state.getBlock();
+                if (isChest(block) && res.containsLoc(block.getLocation())) {
+                    // protectionCreatedHandler 内部会通过 chestService.isLocked() 判断，
+                    // 仅对上锁的箱子执行自动卸锁
+                    protectionCreatedHandler.accept(block);
                 }
             }
         }

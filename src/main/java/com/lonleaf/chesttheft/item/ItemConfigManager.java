@@ -57,6 +57,14 @@ public class ItemConfigManager {
                 defaultIds.putIfAbsent(def.getType(), id);
             }
         }
+        // 外部插件物品（material 带前缀）校验：解析失败时告警，运行期回退兜底材质
+        for (ItemDefinition def : definitions.values()) {
+            String externalId = def.getExternalId();
+            if (externalId != null && CrossPluginItemUtil.getItem(externalId, null) == null) {
+                plugin.getLogger().warning(Messages.getLog(Messages.LOG_ITEM_EXTERNAL_UNRESOLVED,
+                        def.getId(), externalId, def.getMaterial()));
+            }
+        }
     }
 
     /** 递归收集目录下所有 yml 文件，按文件名排序（保证加载顺序稳定）。 */

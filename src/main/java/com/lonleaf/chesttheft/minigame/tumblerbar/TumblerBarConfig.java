@@ -73,7 +73,9 @@ public class TumblerBarConfig {
     public static TumblerBarConfig from(ConfigurationSection section, Logger logger) {
         int aStates = Math.max(2, section == null ? 4 : section.getInt("a-states", 4));
         int initialA = clamp(0, aStates - 1, section == null ? 0 : section.getInt("initial-a", 0));
-        int unlockA = clamp(0, aStates - 1, section == null ? 1 : section.getInt("unlock-a", 1));
+        // unlock-a 支持 -1 = 每次撬锁会话随机选取（见 isRandomUnlockA），不可参与 clamp（-1 会被钳成 0 使随机失效）
+        int rawUnlockA = section == null ? 1 : section.getInt("unlock-a", 1);
+        int unlockA = rawUnlockA == -1 ? -1 : clamp(0, aStates - 1, rawUnlockA);
         int bStates = Math.max(2, section == null ? 5 : section.getInt("b-states", 5));
         int bFinal;
         if (section == null || !section.contains("b-final")) {

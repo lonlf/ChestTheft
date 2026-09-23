@@ -13,6 +13,7 @@ import com.lonleaf.chesttheft.minigame.movingbar.MovingBarMiniGame;
 import com.lonleaf.chesttheft.minigame.rhythmbar.RhythmBarMiniGame;
 import com.lonleaf.chesttheft.minigame.tumblerbar.TumblerBarMiniGame;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -30,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class GameManager implements Listener {
     private final JavaPlugin plugin;
@@ -100,8 +102,8 @@ public class GameManager implements Listener {
         long now = System.currentTimeMillis();
         Long lastEnd = cooldowns.get(uuid);
         if (lastEnd != null) {
-            long remaining = (lastEnd + config.getCooldownSeconds() * 1000L - now) / 1000L + 1;
-            if (remaining > 0) {
+            long remaining = (lastEnd + config.getCooldownSeconds() * 1000L - now) / 1000L;
+            if (remaining > 0) {//潜在的性能优化，以后看情况改
                 Messages.send(player, Messages.COOLDOWN, Messages.COOLDOWN_FORMAT, remaining);
                 return false;
             }
@@ -118,14 +120,30 @@ public class GameManager implements Listener {
         MiniGameSession session = miniGame.createSession(
                 new MiniGameContext(player, this, target, onSuccess, config));
         activeGames.put(uuid, session);
-        session.start();
-        return true;
+        try {
+            session.start();
+            return true;
+        } catch (Exception e) {
+            // 会话启动失败（如骑乘实体/规则提示发包异常）：回滚会话状态，
+            // 避免玩家永久卡在"游戏中"（isPlaying 恒 true 无法再次开局）且坐骑实体泄漏
+            activeGames.remove(uuid);
+            session.stop();
+            plugin.getLogger().warning(Messages.getLog(Messages.LOG_GAME_START_FAIL, config.getGameType(), e.getMessage()));
+            return false;
+        }
     }
 
     public void endGame(Player player) {
         MiniGameSession session = activeGames.remove(player.getUniqueId());
-        if (session != null) {
+        if (session == null) {
+            return;
+        }
+        session.markSettled();   // 防 tick 在结算过程中再次进入
+        try {
             session.stop();
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "[ChestTheft] Failed to stop minigame session cleanly", e);
+        } finally {
             cooldowns.put(player.getUniqueId(), System.currentTimeMillis());
         }
     }
@@ -144,42 +162,76 @@ public class GameManager implements Listener {
 
     /** 会话主动失败结束（如节奏条光标越过判定点未命中）：发送失败消息、触发失败触发器并结束会话。 */
     public void failGame(MiniGameSession session) {
+        failGame(session, true);
+    }
+
+    /** 会话失败结束；sendFailMessage=false 时（超时）保留调用方已发送的超时提示，不重复发送失败消息，
+     *  但仍触发失败触发器/失败音效/锁物品触发器（与主动失败一致的惩罚语义）。
+     *  每一步单独隔离、且 endGame 放在 finally：任何一步抛异常都不会把玩家留在游戏中。 */
+    public void failGame(MiniGameSession session, boolean sendFailMessage) {
+        if (!session.markSettled()) {
+            return;   // 已结算（点击/玩法/超时并发触发时只生效一次）
+        }
         Player player = session.getPlayer();
-        Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT);
-        session.getConfig().getFailSound().play(player);
-        triggerManager.fire(TriggerType.FAIL, new TriggerContext(player, BlockLocation.from(session.getTarget())));
-        fireLockTrigger(session.getTarget(), TriggerType.FAIL, player);
-        endGame(player);
+        try {
+            if (sendFailMessage) {
+                safe(() -> Messages.send(player, Messages.FAIL, Messages.FAIL_FORMAT));
+            }
+            safe(() -> session.getConfig().getFailSound().play(player));
+            safe(() -> triggerManager.fire(TriggerType.FAIL,
+                    new TriggerContext(player, BlockLocation.from(session.getTarget()))));
+            safe(() -> fireLockTrigger(session.getTarget(), TriggerType.FAIL, player));
+        } finally {
+            endGame(player);
+        }
     }
 
     /** 会话主动成功结束（按键类玩法满足条件时调用）：发送成功消息、触发成功触发器，
-     *  战利品箱执行回调或授予开箱授权（成功后由玩家自行右键打开）并结束会话。 */
+     *  战利品箱执行回调或授予开箱授权（成功后由玩家自行右键打开）并结束会话。
+     *  每一步单独隔离、且 endGame 放在 finally：任何一步抛异常都不会把玩家留在游戏中。 */
     public void successGame(MiniGameSession session) {
-        Player player = session.getPlayer();
-        Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT);
-        session.getConfig().getSuccessSound().play(player);
-        triggerManager.fire(TriggerType.SUCCESS, new TriggerContext(player, BlockLocation.from(session.getTarget())));
-        fireLockTrigger(session.getTarget(), TriggerType.SUCCESS, player);
-        // 战利品箱等自定义目标：成功后执行回调打开；普通上锁方块（箱子/陷阱箱/门等）不再自动打开，
-        // 改为授予开箱授权（access-duration 限时多次 / access-once-window 一次性），由玩家自行右键打开
-        Runnable onSuccess = session.getOnSuccess();
-        if (onSuccess != null) {
-            onSuccess.run();
-        } else {
-            Block target = session.getTarget();
-            if (target != null && !target.getType().isAir()) {
-                // 使用本局配置（按锁等级选取）：等级配置的 access-duration / access-once-window 才能生效。
-                // 全局解锁：一人撬锁后所有玩家均可打开（无需再撬锁），过期自动重新上锁
-                unlockGlobally(BlockLocation.from(target), session.getConfig());
-                // 预授权外部保护（Residence/Dominion/Bolt/LWC 等）：撬锁者随后右键打开时，
-                // 保护插件（LOWEST 先于本插件注册的 Dominion 等）的交互检查已放行，
-                // 不再发送"无权限"提示；该授权在关闭/退出时撤销。无本插件的解锁状态
-                // （isLockPicked）时打开流程本身被 ChestTheft 拦截，故无越权风险
-                Bukkit.getPluginManager().callEvent(
-                        new ChestOpenEvent(player, target, BlockLocation.from(target)));
-            }
+        if (!session.markSettled()) {
+            return;
         }
-        endGame(player);
+        Player player = session.getPlayer();
+        try {
+            safe(() -> Messages.send(player, Messages.SUCCESS, Messages.SUCCESS_FORMAT));
+            safe(() -> session.getConfig().getSuccessSound().play(player));
+            safe(() -> triggerManager.fire(TriggerType.SUCCESS,
+                    new TriggerContext(player, BlockLocation.from(session.getTarget()))));
+            safe(() -> fireLockTrigger(session.getTarget(), TriggerType.SUCCESS, player));
+            Runnable onSuccess = session.getOnSuccess();
+            if (onSuccess != null) {
+                safe(onSuccess);   // 战利品箱回调或插件 API 回调
+            } else {
+                safe(() -> grantOpenAfterSuccess(session, player));
+            }
+        } finally {
+            endGame(player);
+        }
+    }
+
+    /** 成功且无自定义回调：授予全局开箱授权并预授权外部保护（普通上锁方块由玩家自行右键打开）。 */
+    private void grantOpenAfterSuccess(MiniGameSession session, Player player) {
+        Block target = session.getTarget();
+        if (target == null || target.getType().isAir()) {
+            return;
+        }
+        // 使用本局配置（按锁等级选取）：等级配置的 access-duration / access-once-window 才能生效。
+        // 全局解锁：一人撬锁后所有玩家均可打开（无需再撬锁），过期自动重新上锁
+        unlockGlobally(BlockLocation.from(target), session.getConfig());
+        // 预授权外部保护（Residence/Dominion/Bolt/LWC 等）：撬锁者随后右键打开时，
+        // 保护插件的 LOWEST 交互检查已放行；授权在关闭/退出时撤销，无越权风险
+        Bukkit.getPluginManager().callEvent(new ChestOpenEvent(player, target, BlockLocation.from(target)));
+    }
+
+    /** 执行一步结算动作并隔离异常：单步失败只记日志，不影响其余步骤与结束流程。 */
+    private void safe(Runnable action) {
+        try {
+            action.run();
+        } catch (LinkageError | Exception e) {
+            plugin.getLogger().log(Level.WARNING, "[ChestTheft] Minigame settlement step failed", e);
+        }
     }
 
     public boolean isPlaying(Player player) {
@@ -197,11 +249,14 @@ public class GameManager implements Listener {
             windowMs = duration * 1000L;
             once = false;
         } else {
-            // 一次性解锁：仅一次打开机会，在 access-once-window 内有效
-            windowMs = cfg.getAccessOnceWindowSeconds() * 1000L;
+            // 一次性解锁：仅一次打开机会；access-once-window 为 0 表示不限期（仍只限一次，首次打开后重新上锁）
+            long windowSeconds = cfg.getAccessOnceWindowSeconds();
+            windowMs = windowSeconds > 0 ? windowSeconds * 1000L : Long.MAX_VALUE;
             once = true;
         }
-        unlockedLocks.put(location, new GlobalUnlock(System.currentTimeMillis() + windowMs, once));
+        // 无限期哨兵值直接透传，避免 now + Long.MAX_VALUE 溢出为负数
+        long expireAt = windowMs == Long.MAX_VALUE ? Long.MAX_VALUE : System.currentTimeMillis() + windowMs;
+        unlockedLocks.put(location, new GlobalUnlock(expireAt, once));
     }
 
     /** 该锁是否处于被撬开的全局解锁状态（任意玩家均可打开；过期自动失效并重新上锁）。 */
@@ -249,23 +304,43 @@ public class GameManager implements Listener {
     /** 撬锁中移动超过配置范围：按当前会话配置决定是否中断。 */
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
         Player player = event.getPlayer();
         MiniGameSession session = activeGames.get(player.getUniqueId());
         if (session == null) {
             return;
         }
+        Location from = session.getStartLocation();
+        Location to = event.getTo();
+        if (from == null || to == null || from.getWorld() == null || to.getWorld() == null) {
+            return;
+        }
+        // 跨世界不能比较距离（distance 会抛异常）；换世界已由 PlayerChangedWorldEvent /
+        // PlayerTeleportEvent 结束会话，这里兜底按"离开撬锁点"中断，避免残留会话。
+        if (!from.getWorld().equals(to.getWorld())) {
+            interrupt(session, player);
+            return;
+        }
         double range = session.getConfig().getInterruptMoveRange();
-        if (range > 0 && session.getStartLocation().distance(event.getTo()) > range) {
+        if (range > 0 && from.distance(to) > range) {
             interrupt(session, player);
         }
     }
 
     private void interrupt(MiniGameSession session, Player player) {
-        Messages.send(player, Messages.PICK_INTERRUPTED, Messages.PICK_INTERRUPTED_FORMAT);
-        BlockLocation location = BlockLocation.from(session.getTarget());
-        triggerManager.fire(TriggerType.INTERRUPTED, new TriggerContext(player, location));
-        fireLockTrigger(session.getTarget(), TriggerType.INTERRUPTED, player);
-        endGame(player);
+        if (!session.markSettled()) {
+            return;   // 已结算（如刚成功/失败）：不再补发中断提示
+        }
+        try {
+            safe(() -> Messages.send(player, Messages.PICK_INTERRUPTED, Messages.PICK_INTERRUPTED_FORMAT));
+            BlockLocation location = BlockLocation.from(session.getTarget());
+            safe(() -> triggerManager.fire(TriggerType.INTERRUPTED, new TriggerContext(player, location)));
+            safe(() -> fireLockTrigger(session.getTarget(), TriggerType.INTERRUPTED, player));
+        } finally {
+            endGame(player);
+        }
     }
 
     /** 撬锁中死亡：结束会话（受击中断已按配置处理，死亡再兜底一次，endGame 幂等）。 */

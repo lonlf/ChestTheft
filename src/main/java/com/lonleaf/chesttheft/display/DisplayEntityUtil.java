@@ -146,7 +146,9 @@ public final class DisplayEntityUtil {
         if (entity == null) {
             return;
         }
-        Set<UUID> current = entity.getViewers();
+        // 拷贝当前观众集合：迭代中会调用 removeViewer 修改观众集合，
+        // 若 EntityLib 返回内部集合引用则直接迭代会抛 ConcurrentModificationException
+        Set<UUID> current = new HashSet<>(entity.getViewers());
         Set<UUID> target = holders == null ? Collections.emptySet() : new HashSet<>(holders);
         for (UUID viewer : target) {
             if (!current.contains(viewer)) {

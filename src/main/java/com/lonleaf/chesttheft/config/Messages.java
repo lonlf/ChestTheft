@@ -2,6 +2,7 @@ package com.lonleaf.chesttheft.config;
 
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -14,11 +15,14 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -40,7 +44,13 @@ public class Messages {
     /** 消息存储（ConcurrentHashMap 保证 reload 时并发读取线程安全） */
     private static final Map<String, String> messages = new ConcurrentHashMap<>();
 
-    /** 各消息显示方式（来自 config.yml 的 message-format 小节）：消息键 → message/actionbar/title/subtitle。 */
+    /**
+     * 所有已知语言的注入行前缀（loreType / lorePaired / loreNotPaired，已转 §）：
+     * 清理注入行必须语言无关，否则切换语言后旧语言的行匹配不到会残留重复。
+     */
+    private static final Set<String> INJECTED_LORE_PREFIXES = new LinkedHashSet<>();
+
+    /** 各消息显示方式（来自 config.yml 的message-format 小节）：消息键→message/actionbar/title/subtitle。*/
     private static final Map<String, String> formats = new HashMap<>();
 
     // ==================== 玩家消息 ====================
@@ -51,9 +61,9 @@ public class Messages {
     public static volatile String CANCEL_PICKING;
     public static volatile String PICK_INTERRUPTED;
     public static volatile String PICK_UNLOCKED;
-    /** Tumbler 状态栏"尝试"标签。 */
+    /** Tumbler 状态栏"尝试"标签。*/
     public static volatile String ATTEMPTS_LABEL;
-    /** Tumbler 状态栏 A 已对准可解锁 / 未对准 / 失败动画中（破损）标签。 */
+    /** Tumbler 状态栏 A 已对准可解锁 / 未对准/ 失败动画中（破损）标签。*/
     public static volatile String TUMBLER_ALIGNED, TUMBLER_MISALIGNED, TUMBLER_DAMAGED;
     public static volatile String RULE;
     public static volatile String RULE_RHYTHM;
@@ -63,6 +73,10 @@ public class Messages {
     public static volatile String LOCKED_IT;
     public static volatile String BLOCK_LOCKED;
     public static volatile String LOCK_NOT_LOCKABLE;
+    /** 上锁写入失败（非"位置已被占用"）：数据库异常等，需与BLOCK_LOCKED 区分，避免误导排查方向。*/
+    public static volatile String LOCK_FAILED;
+    /** 手持钥匙左键点击未上锁方块时的指引（避免"点击没反应"）。 */
+    public static volatile String KEY_ON_UNLOCKED;
     public static volatile String GAME_TIMEOUT;
     public static volatile String COOLDOWN;
     public static volatile String NO_PERMISSION;
@@ -70,11 +84,16 @@ public class Messages {
     public static volatile String INVALID_ID;
     public static volatile String INVALID_AMOUNT;
     public static volatile String GIVEN_ITEM;
+    public static volatile String GIVEN_ITEM_DROPPED;
     public static volatile String SETITEM_SUCCESS;
     public static volatile String SETITEM_NO_ITEM;
     public static volatile String CHECK_PDC;
     public static volatile String CHECK_KEY_INFO;
+    /** /ct check：物品本体来源（未配置/ 已解析/ 解析失败回退材质）。*/
+    public static volatile String CHECK_BASE_NONE, CHECK_BASE_RESOLVED, CHECK_BASE_FAILED;
     public static volatile String CHECK_NOT_SPECIAL;
+    /** /ct check：有 PDC 标签但找不到物品定义时显示的"类型"。*/
+    public static volatile String CHECK_TYPE_NOT_DEFINED;
     public static volatile String LOOT_CHEST_SPAWNED;
     public static volatile String LOOT_CHEST_NOT_FOUND;
     public static volatile String NONE;
@@ -82,6 +101,8 @@ public class Messages {
     public static volatile String UNLOCK_CONFIRM;
     public static volatile String PAIR_SUCCESS;
     public static volatile String PAIR_NOT_LOCKER;
+    public static volatile String REPAIR_CONFIRM;
+    public static volatile String REPAIR_SUCCESS;
     public static volatile String KEY_NOT_MATCHED;
     public static volatile String KEY_CHANGED;
     public static volatile String CHEST_PROTECTED;
@@ -89,9 +110,13 @@ public class Messages {
     public static volatile String CHEST_PROTECTED_ACCESS_DENIED;
     public static volatile String PLAYER_ONLY;
     public static volatile String RELOADED;
+    public static volatile String RELOAD_FAILED;
     public static volatile String USAGE;
     public static volatile String DEBUG_GAME_START;
     public static volatile String DEBUG_LEVEL_INVALID;
+    public static volatile String DEBUG_SOUND_PLAY;
+    public static volatile String DEBUG_SOUND_KEY_INVALID;
+    public static volatile String DEBUG_SOUND_DISABLED;
 
     // ============ 物品 Lore 展示信息（协议包注入，固定文本样式） ============
 
@@ -99,13 +124,13 @@ public class Messages {
     public static volatile String LORE_PAIRED;
     public static volatile String LORE_NOT_PAIRED;
 
-    // ============ 物品类型名称（key / lock / picker 的本地化显示） ============
+    // ============ 物品类型名称（key / lock / picker 的本地化显示）============
 
     public static volatile String TYPE_KEY;
     public static volatile String TYPE_LOCK;
     public static volatile String TYPE_PICKER;
 
-    // ============ 玩家消息显示方式（message / actionbar / title / subtitle） ============
+    // ============ 玩家消息显示方式（message / actionbar / title / subtitle）============
 
     public static volatile String SUCCESS_FORMAT;
     public static volatile String FAIL_FORMAT;
@@ -116,6 +141,8 @@ public class Messages {
     public static volatile String LOCKED_IT_FORMAT;
     public static volatile String BLOCK_LOCKED_FORMAT;
     public static volatile String LOCK_NOT_LOCKABLE_FORMAT;
+    public static volatile String LOCK_FAILED_FORMAT;
+    public static volatile String KEY_ON_UNLOCKED_FORMAT;
     public static volatile String GAME_TIMEOUT_FORMAT;
     public static volatile String COOLDOWN_FORMAT;
     public static volatile String NO_PERMISSION_FORMAT;
@@ -123,6 +150,7 @@ public class Messages {
     public static volatile String INVALID_ID_FORMAT;
     public static volatile String INVALID_AMOUNT_FORMAT;
     public static volatile String GIVEN_ITEM_FORMAT;
+    public static volatile String GIVEN_ITEM_DROPPED_FORMAT;
     public static volatile String SETITEM_SUCCESS_FORMAT;
     public static volatile String SETITEM_NO_ITEM_FORMAT;
     public static volatile String CHECK_PDC_FORMAT;
@@ -134,6 +162,8 @@ public class Messages {
     public static volatile String UNLOCK_CONFIRM_FORMAT;
     public static volatile String PAIR_SUCCESS_FORMAT;
     public static volatile String PAIR_NOT_LOCKER_FORMAT;
+    public static volatile String REPAIR_CONFIRM_FORMAT;
+    public static volatile String REPAIR_SUCCESS_FORMAT;
     public static volatile String KEY_NOT_MATCHED_FORMAT;
     public static volatile String KEY_CHANGED_FORMAT;
     public static volatile String CHEST_PROTECTED_FORMAT;
@@ -141,11 +171,15 @@ public class Messages {
     public static volatile String CHEST_PROTECTED_ACCESS_DENIED_FORMAT;
     public static volatile String PLAYER_ONLY_FORMAT;
     public static volatile String RELOADED_FORMAT;
+    public static volatile String RELOAD_FAILED_FORMAT;
     public static volatile String USAGE_FORMAT;
     public static volatile String DEBUG_GAME_START_FORMAT;
     public static volatile String DEBUG_LEVEL_INVALID_FORMAT;
+    public static volatile String DEBUG_SOUND_PLAY_FORMAT;
+    public static volatile String DEBUG_SOUND_KEY_INVALID_FORMAT;
+    public static volatile String DEBUG_SOUND_DISABLED_FORMAT;
 
-    // ==================== 服务器日志 ====================
+    // ==================== 服务器日志====================
 
     public static volatile String LOG_ENABLED;
     public static volatile String LOG_LANG_DETECTED;
@@ -154,6 +188,10 @@ public class Messages {
     public static volatile String LOG_ITEM_INVALID_TYPE;
     public static volatile String LOG_ITEM_GIVE_KEY_INVALID;
     public static volatile String LOG_ITEM_INVALID_MATERIAL;
+    public static volatile String LOG_ITEM_EXTERNAL_UNRESOLVED;
+    public static volatile String LOG_ITEM_EXTERNAL_API_ERROR;
+    /** 外部物品 ID 未写命名空间、已自动匹配到完整 ID 时的提示。 */
+    public static volatile String LOG_ITEM_EXTERNAL_NAMESPACE_GUESSED;
     public static volatile String LOG_DB_INIT;
     public static volatile String LOG_DB_CONNECT_FAIL;
     public static volatile String LOG_DB_CREATE_TABLE_FAIL;
@@ -164,6 +202,9 @@ public class Messages {
     public static volatile String LOG_DB_UNLOCK_FAIL;
     public static volatile String LOG_DB_ITEM_FAIL;
     public static volatile String LOG_DB_CLOSE_FAIL;
+    public static volatile String LOG_LOCK_INDEX_LOADED;
+    public static volatile String LOG_LOCK_INDEX_LOAD_FAIL;
+    public static volatile String LOG_CONFIG_ABORT_ENABLE;
     public static volatile String LOG_PACKET_LORE_FAIL;
     public static volatile String LOG_PACKET_DEBUG;
     public static volatile String LOG_CONFIG_LOAD_FAIL;
@@ -179,9 +220,12 @@ public class Messages {
     public static volatile String LOG_LOCK_LEVEL_FALLBACK_DEFAULT;
     public static volatile String LOG_LOCK_APPLIED;
     public static volatile String LOG_PICKLOCK_START_DEBUG;
+    public static volatile String LOG_OWNER_CLOSE_RELOCK;
     public static volatile String LOG_TRIGGER_INVALID_TYPE;
     public static volatile String LOG_TRIGGER_REF_MISSING;
     public static volatile String LOG_TRIGGER_PARSE_FAIL;
+    public static volatile String LOG_TRIGGER_DUPLICATE_ID;
+    public static volatile String LOG_GAME_START_FAIL;
     public static volatile String LOG_CONFIG_LOCKABLE_INVALID;
     public static volatile String LOG_TUMBLER_BFINAL_INVALID;
     public static volatile String LOG_TUMBLER_ATTEMPTS_EXHAUSTED;
@@ -205,12 +249,23 @@ public class Messages {
     public static volatile String LOG_LOOT_SOUND_TYPE_INVALID;
     public static volatile String LOG_LOOT_FIELD_DEFAULT_USED;
     public static volatile String LOG_LOOT_GLOW_COLOR_INVALID;
+    public static volatile String LOG_RECIPE_UNPAIR_NO_ITEM;
+    public static volatile String LOG_LOCK_RETURN_ITEM_FAIL;
+    public static volatile String LOG_LOOT_CHEST_FULL_NO_DROP;
+    public static volatile String LOG_RESOURCE_PACK_DIR_FAIL;
+    public static volatile String LOG_RESOURCE_PACK_MISSING;
+    public static volatile String LOG_RESOURCE_PACK_EXPORTED;
+    public static volatile String LOG_RESOURCE_PACK_EXPORT_FAIL;
+    public static volatile String LOG_TEMP_REVOKE_FAIL;
+    public static volatile String LOG_TEMP_STALE_KEEP;
+    public static volatile String LOG_TEMP_STALE_VALUE_SEEN;
+    public static volatile String LOG_TRIGGER_ACTION_FAIL;
     public static volatile String LOG_MESSAGES_INIT;
     public static volatile String LOG_MESSAGES_RELOAD;
 
-    // ==================== 初始化 ====================
+    // ==================== 初始化====================
 
-    /** 初始化消息系统：创建 lang 目录、提取内置语言文件并加载指定语言。 */
+    /** 初始化消息系统：创建 lang 目录、提取内置语言文件并加载指定语言。*/
     public static void init(Path dataDirectory, String lang) {
         langDir = dataDirectory.resolve("lang");
         currentLang = (lang != null && !lang.isBlank()) ? lang : "en_gb";
@@ -218,6 +273,7 @@ public class Messages {
             Files.createDirectories(langDir);
             extractBuiltinLanguages();
             loadMessages(currentLang);
+            collectInjectedLorePrefixes();
             LOGGER.info(getLog(LOG_MESSAGES_INIT, currentLang));
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to initialize messages system", e);
@@ -232,10 +288,93 @@ public class Messages {
             currentLang = lang;
         }
         loadMessages(currentLang);
+        collectInjectedLorePrefixes();
         LOGGER.info(getLog(LOG_MESSAGES_RELOAD, currentLang));
     }
 
-    /** 获取玩家消息：& 颜色码转 § 并替换 {0}, {1} 等占位符。 */
+    /**
+     * 该 Lore 行是否为本插件注入的展示行（空行 / 类型行 / 配对行 / 未配对行）。
+     * 匹配所有已知语言前缀：注入行可能来自切换前的语言，只按当前语言匹配会漏删导致配对信息重复。
+     */
+    public static boolean isInjectedLoreLine(String line) {
+        if (line == null || line.isEmpty()) {
+            return true;
+        }
+        for (String prefix : INJECTED_LORE_PREFIXES) {
+            if (!prefix.isEmpty() && line.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 收集所有已知语言（内置+ 当前 + 数据目录 lang/*.yml）的注入行前缀，init/reload 时重建。*/
+    private static void collectInjectedLorePrefixes() {
+        INJECTED_LORE_PREFIXES.clear();
+        Set<String> langs = new LinkedHashSet<>(Arrays.asList(BUILTIN_LANGS));
+        if (currentLang != null && !currentLang.isBlank()) {
+            langs.add(currentLang);
+        }
+        if (langDir != null && Files.isDirectory(langDir)) {
+            try (var stream = Files.list(langDir)) {
+                for (Path p : (Iterable<Path>) stream::iterator) {
+                    String name = p.getFileName().toString();
+                    if (name.endsWith(".yml")) {
+                        langs.add(name.substring(0, name.length() - 4));
+                    }
+                }
+            } catch (IOException e) {
+                LOGGER.fine("Failed to list lang dir for injected-lore prefixes: " + e.getMessage());
+            }
+        }
+        for (String lang : langs) {
+            Map<String, String> keys = readLoreTemplates(lang);
+            for (String key : new String[]{"loreType", "lorePaired", "loreNotPaired"}) {
+                String raw = keys.get(key);
+                if (raw != null) {
+                    // 空参数格式化取前缀：类型行形如 "§7类型: §f<值" →前缀 "§7类型: §f"
+                    INJECTED_LORE_PREFIXES.add(format(ChatColor.translateAlternateColorCodes('&', raw), ""));
+                }
+            }
+        }
+    }
+
+    /** 读取指定语言文件中的注入行模板（优先外部 lang/ 文件，其次JAR 内置资源）；缺失时返回空 Map。*/
+    private static Map<String, String> readLoreTemplates(String lang) {
+        String text = null;
+        if (langDir != null) {
+            Path file = langDir.resolve(lang + ".yml");
+            if (Files.exists(file)) {
+                try {
+                    text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    LOGGER.fine("Failed to read lang file " + file + ": " + e.getMessage());
+                }
+            }
+        }
+        if (text == null) {
+            try (InputStream in = Messages.class.getResourceAsStream(RESOURCE_PREFIX + lang + ".yml")) {
+                if (in == null) {
+                    return Map.of();
+                }
+                text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                LOGGER.fine("Failed to read built-in lang " + lang + ": " + e.getMessage());
+                return Map.of();
+            }
+        }
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(new StringReader(text));
+        Map<String, String> out = new HashMap<>();
+        for (String key : new String[]{"loreType", "lorePaired", "loreNotPaired"}) {
+            String value = yaml.getString(key);
+            if (value != null) {
+                out.put(key, value);
+            }
+        }
+        return out;
+    }
+
+    /** 获取玩家消息： 颜色码转 § 并替换{0}, {1} 等占位符。*/
     public static String get(String template, Object... args) {
         if (template == null) {
             return "";
@@ -253,7 +392,7 @@ public class Messages {
         return format(template, args);
     }
 
-    /** 按配置的显示方式发送玩家消息：message/actionbar/title，非玩家或未知格式回退聊天。 */
+    /** 按配置的显示方式发送玩家消息：message/actionbar/title，非玩家或未知格式回退聊天。*/
     public static void send(CommandSender sender, String text, String format, Object... args) {
         String msg = get(text, args);
         if (!(sender instanceof Player player) || format == null || format.equalsIgnoreCase("message")) {
@@ -268,7 +407,7 @@ public class Messages {
         }
     }
 
-    /** 应用 message-format 小节显示方式配置；应在语言加载完成后调用，reload 时需再次调用。 */
+    /** 应用 message-format 小节显示方式配置；应在语言加载完成后调用，reload 时需再次调用。*/
     public static void applyFormats(Map<String, String> formatMap) {
         formats.clear();
         if (formatMap != null) {
@@ -277,7 +416,7 @@ public class Messages {
         loadFormats();
     }
 
-    /** 按配置的显示方式刷新各消息格式字段，缺失的键使用默认值。 */
+    /** 按配置的显示方式刷新各消息格式字段，缺失的键使用默认值。*/
     private static void loadFormats() {
         SUCCESS_FORMAT = formats.getOrDefault("pickingSuccess", "message");
         FAIL_FORMAT = formats.getOrDefault("pickingFail", "message");
@@ -288,6 +427,9 @@ public class Messages {
         LOCKED_IT_FORMAT = formats.getOrDefault("lockSuccess", "title");
         BLOCK_LOCKED_FORMAT = formats.getOrDefault("blockLocked", "message");
         LOCK_NOT_LOCKABLE_FORMAT = formats.getOrDefault("lockNotLockable", "message");
+        LOCK_FAILED_FORMAT = formats.getOrDefault("lockFailed", "message");
+        KEY_ON_UNLOCKED_FORMAT = formats.getOrDefault("keyOnUnlocked", "message");
+        GIVEN_ITEM_DROPPED_FORMAT = formats.getOrDefault("givenItemDropped", "message");
         GAME_TIMEOUT_FORMAT = formats.getOrDefault("pickingTimeout", "message");
         COOLDOWN_FORMAT = formats.getOrDefault("pickingCooldown", "message");
         NO_PERMISSION_FORMAT = formats.getOrDefault("noPermission", "message");
@@ -308,20 +450,26 @@ public class Messages {
         UNLOCK_CONFIRM_FORMAT = formats.getOrDefault("unlockConfirm", "message");
         PAIR_SUCCESS_FORMAT = formats.getOrDefault("pairSuccess", "message");
         PAIR_NOT_LOCKER_FORMAT = formats.getOrDefault("pairNotLocker", "message");
+        REPAIR_CONFIRM_FORMAT = formats.getOrDefault("repairConfirm", "message");
+        REPAIR_SUCCESS_FORMAT = formats.getOrDefault("repairSuccess", "message");
         KEY_NOT_MATCHED_FORMAT = formats.getOrDefault("keyNotMatched", "message");
         KEY_CHANGED_FORMAT = formats.getOrDefault("keyChanged", "message");
         CHEST_PROTECTED_FORMAT = formats.getOrDefault("chestProtected", "message");
         CHEST_PROTECTED_LOCK_DENIED_FORMAT = formats.getOrDefault("chestProtectedLockDenied", "message");
         CHEST_PROTECTED_ACCESS_DENIED_FORMAT = formats.getOrDefault("chestProtectedAccessDenied", "message");
         PLAYER_ONLY_FORMAT = formats.getOrDefault("playerOnly", "message");
-        // USAGE、RELOADED 与 debug 为管理员命令，固定使用聊天消息，不参与显示方式配置
+        // USAGE、RELOADED 与debug 为管理员命令，固定使用聊天消息，不参与显示方式配置
         USAGE_FORMAT = "message";
-        RELOADED_FORMAT = "message";
+        RELOADED_FORMAT = formats.getOrDefault("reloaded", "message");
+        RELOAD_FAILED_FORMAT = formats.getOrDefault("reloadFailed", "message");
         DEBUG_GAME_START_FORMAT = "message";
         DEBUG_LEVEL_INVALID_FORMAT = "message";
+        DEBUG_SOUND_PLAY_FORMAT = "message";
+        DEBUG_SOUND_KEY_INVALID_FORMAT = "message";
+        DEBUG_SOUND_DISABLED_FORMAT = "message";
     }
 
-    /** 获取当前语言代码。 */
+    /** 获取当前语言代码。*/
     public static String getCurrentLang() {
         return currentLang;
     }
@@ -366,7 +514,7 @@ public class Messages {
         return "en_gb";
     }
 
-    /** 语言族回退：查找以语言主码开头（{@code <main>_}）的语言文件。 */
+    /** 语言族回退：查找以语言主码开头（{@code <main>_}）的语言文件。*/
     private static String findLanguageFamily(String main) {
         if (main == null || main.isEmpty()) {
             return null;
@@ -473,12 +621,16 @@ public class Messages {
             Properties props = new Properties();
             props.load(reader);
             props.forEach((key, value) -> messages.put(key.toString(), stripQuotes(value.toString())));
+        } catch (IllegalArgumentException e) {
+            // 语言文件含非法 \\u 转义（如 \\uZZZZ）：Properties 抛 RuntimeException 而非 IOException；
+            // 捕获并降级——已加载键保留，受影响键回退默认，避免异常上抛导致插件启动崩溃
+            LOGGER.log(Level.WARNING, "语言文件包含非法 \\u 转义（部分键未加载，将回退默认值）", e);
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to parse language content", e);
         }
     }
 
-    /** 去掉 YAML 风格的成对双引号（Properties 解析不会自动去除）。 */
+    /** 去掉 YAML 风格的成对双引号（Properties 解析不会自动去除）。*/
     private static String stripQuotes(String value) {
         String trimmed = value.trim();
         if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
@@ -504,19 +656,21 @@ public class Messages {
         START_PICKING = messages.getOrDefault("startPicking", "&aStart picking!");
         CANCEL_PICKING = messages.getOrDefault("cancelPicking", "&aPicklocking cancelled!");
         PICK_INTERRUPTED = messages.getOrDefault("pickInterrupted", "&cPicklocking interrupted!");
-        PICK_UNLOCKED = messages.getOrDefault("lockPicked", "&eThis lock has been picked — everyone can open it!");
+        PICK_UNLOCKED = messages.getOrDefault("lockPicked", "&e该锁已被撬开，所有玩家均可打开！");
         ATTEMPTS_LABEL = messages.getOrDefault("attemptsLabel", "Attempts");
         TUMBLER_ALIGNED = messages.getOrDefault("tumblerAligned", "Ready");
         TUMBLER_MISALIGNED = messages.getOrDefault("tumblerMisaligned", "Misaligned");
         TUMBLER_DAMAGED = messages.getOrDefault("tumblerDamaged", "Broken");
-        RULE = messages.getOrDefault("rule", "&aPicklock started! The cursor moves automatically — click when it enters the unhit zone!");
-        RULE_RHYTHM = messages.getOrDefault("ruleRhythm", "&aPicklock started! The cursor moves automatically — click each unhit point in order to unlock!");
+        RULE = messages.getOrDefault("rule", "&a撬锁开始！游标自动往复移动，当游标走到未完成判定区时点击鼠标！");
+        RULE_RHYTHM = messages.getOrDefault("ruleRhythm", "&a撬锁开始！游标自动往复移动，依次在未完成判定点处点击，全部命中即可开锁！");
         RULE_RIDE = messages.getOrDefault("ruleRide", "&aPicklock started! Move the cursor with A/D and click when it enters the unhit zone!");
         RULE_RHYTHM_RIDE = messages.getOrDefault("ruleRhythmRide", "&aPicklock started! Move the cursor with A/D and click each unhit point in order to unlock!");
         RULE_TUMBLER = messages.getOrDefault("ruleTumbler", "&aPicklock started! Adjust A with A/D, then hold W to turn B once A is aligned!");
         LOCKED_IT = messages.getOrDefault("lockedIt", "&aLocked successfully");
         BLOCK_LOCKED = messages.getOrDefault("blockLocked", "&cThis block is locked!");
         LOCK_NOT_LOCKABLE = messages.getOrDefault("lockNotLockable", "&cThis block cannot be locked!");
+        LOCK_FAILED = messages.getOrDefault("lockFailed", "&cOperation failed (database write error), check the server console");
+        KEY_ON_UNLOCKED = messages.getOrDefault("keyOnUnlocked", "&eThis block is not locked yet! Hold a &flock item&e and left-click to lock it (keys open locked blocks with right-click).");
         GAME_TIMEOUT = messages.getOrDefault("gameTimeout", "&cPicklock timed out!");
         COOLDOWN = messages.getOrDefault("cooldown", "&cToo fast! Please wait {0} seconds");
         NO_PERMISSION = messages.getOrDefault("noPermission", "&cYou do not have permission to use this command!");
@@ -524,18 +678,25 @@ public class Messages {
         INVALID_ID = messages.getOrDefault("invalidId", "&cInvalid item ID: {0}");
         INVALID_AMOUNT = messages.getOrDefault("invalidAmount", "&cInvalid amount!");
         GIVEN_ITEM = messages.getOrDefault("givenItem", "&aGiven {0} {1} to {2}");
+        GIVEN_ITEM_DROPPED = messages.getOrDefault("givenItemDropped", "&eInventory full: {0} {1} dropped at {2}");
         SETITEM_SUCCESS = messages.getOrDefault("setitemSuccess", "&aThe item in your hand is now a {0}");
         SETITEM_NO_ITEM = messages.getOrDefault("setitemNoItem", "&cYou must hold an item in your hand!");
         CHECK_PDC = messages.getOrDefault("checkPdc", "&aItem info:\n&e  ID: &f{0}\n&e  Type: &f{1}");
         CHECK_KEY_INFO = messages.getOrDefault("checkKeyInfo", "&e  Paired lock: &f{0}\n&e  Lock token: &f{1}");
+        CHECK_BASE_NONE = messages.getOrDefault("checkBaseNone", "&e  Base: &7not configured (material {0})");
+        CHECK_BASE_RESOLVED = messages.getOrDefault("checkBaseResolved", "&e  Base: &a{0}");
+        CHECK_BASE_FAILED = messages.getOrDefault("checkBaseFailed", "&e  Base: &c{0} &7(unresolved, fallback material {1})");
         NONE = messages.getOrDefault("none", "none");
         CHECK_NOT_SPECIAL = messages.getOrDefault("checkNotSpecial", "&cThis is not a special item!");
+        CHECK_TYPE_NOT_DEFINED = messages.getOrDefault("checkTypeNotDefined", "&cnot defined (missing item definition)");
         LOOT_CHEST_SPAWNED = messages.getOrDefault("lootChestSpawned", "&aSpawned a loot chest: {0}");
         LOOT_CHEST_NOT_FOUND = messages.getOrDefault("lootChestNotFound", "&cLoot chest profile not found: {0}");
         UNLOCK_SUCCESS = messages.getOrDefault("unlockSuccess", "&aLock removed and the lock item has been returned!");
         UNLOCK_CONFIRM = messages.getOrDefault("unlockConfirm", "&eInteract again to confirm unlocking!");
         PAIR_SUCCESS = messages.getOrDefault("pairSuccess", "&aKey paired to this lock!");
         PAIR_NOT_LOCKER = messages.getOrDefault("pairNotLocker", "&cOnly the locker can pair a key with this lock!");
+        REPAIR_CONFIRM = messages.getOrDefault("repairConfirm", "&eInteract again to confirm re-pairing!");
+        REPAIR_SUCCESS = messages.getOrDefault("repairSuccess", "&aKey re-paired to this lock!");
         KEY_NOT_MATCHED = messages.getOrDefault("keyNotMatched", "&cThis key does not match this lock!");
         KEY_CHANGED = messages.getOrDefault("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
         CHEST_PROTECTED = messages.getOrDefault("chestProtected", "&cThis chest is protected by another plugin! The lock has been removed.");
@@ -543,9 +704,13 @@ public class Messages {
         CHEST_PROTECTED_ACCESS_DENIED = messages.getOrDefault("chestProtectedAccessDenied", "&cThis chest is protected by another plugin! You cannot operate it.");
         PLAYER_ONLY = messages.getOrDefault("playerOnly", "&cThis command can only be used by players!");
         RELOADED = messages.getOrDefault("reloaded", "&aConfiguration reloaded!");
-        USAGE = messages.getOrDefault("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft debug minigame <level>\n&e  /chesttheft reload");
+        RELOAD_FAILED = messages.getOrDefault("reloadFailed", "&cConfiguration reload failed, previous values kept - check the server console");
+        USAGE = messages.getOrDefault("usage", "&eUsage:\n&e  /chesttheft give <player> <item-id> [amount]\n&e  /chesttheft setitem <item-id>\n&e  /chesttheft check\n&e  /chesttheft lootchest <profile-id>\n&e  /chesttheft debug minigame <level>\n&e  /chesttheft debug sound <sound-key> [level]\n&e  /chesttheft reload");
         DEBUG_GAME_START = messages.getOrDefault("debugGameStart", "&aDebug: started {0} minigame (level {1})");
         DEBUG_LEVEL_INVALID = messages.getOrDefault("debugLevelInvalid", "&cInvalid level: {0}");
+        DEBUG_SOUND_PLAY = messages.getOrDefault("debugSoundPlay", "&aSound test: {0} (level {1})");
+        DEBUG_SOUND_KEY_INVALID = messages.getOrDefault("debugSoundKeyInvalid", "&cInvalid sound key: {0} (available: success / fail / move / hit / a-move / a-unlock / b-move)");
+        DEBUG_SOUND_DISABLED = messages.getOrDefault("debugSoundDisabled", "&eSound {0} (level {1}) is not configured (disabled), cannot preview");
 
         LORE_TYPE = messages.getOrDefault("loreType", "&7Type: &f{0}");
         LORE_PAIRED = messages.getOrDefault("lorePaired", "&aPaired: &f{0}");
@@ -565,15 +730,23 @@ public class Messages {
         LOG_ITEM_INVALID_TYPE = messages.getOrDefault("logItemInvalidType", "Item {0} missing a valid type (key / lock / picker), skipped");
         LOG_ITEM_GIVE_KEY_INVALID = messages.getOrDefault("logItemGiveKeyInvalid", "Lock give-key {0} at {1} is not a valid key item, key not given");
         LOG_ITEM_INVALID_MATERIAL = messages.getOrDefault("logItemInvalidMaterial", "Item {0} has invalid material: {1}, using default {2}");
+        LOG_ITEM_EXTERNAL_UNRESOLVED = messages.getOrDefault("logItemExternalUnresolved", "Item {0}: external item base '{1}' could not be resolved (plugin missing or wrong id), using fallback material {2}");
+        LOG_ITEM_EXTERNAL_API_ERROR = messages.getOrDefault("logItemExternalApiError", "Failed to resolve external-plugin item {0}: {1} (item skipped or fallback material used; the plugin version may be incompatible)");
+        LOG_ITEM_EXTERNAL_NAMESPACE_GUESSED = messages.getOrDefault("logItemExternalNamespaceGuessed", "External item base '{0}' has no namespace, matched '{1}'; please use the full id in config");
         LOG_DB_INIT = messages.getOrDefault("logDbInit", "Database initialized: {0}");
         LOG_DB_CONNECT_FAIL = messages.getOrDefault("logDbConnectFail", "Failed to connect to database: {0}");
         LOG_DB_CREATE_TABLE_FAIL = messages.getOrDefault("logDbCreateTableFail", "Failed to create table {0}");
         LOG_DB_QUERY_STATE_FAIL = messages.getOrDefault("logDbQueryStateFail", "Failed to query lock state: {0}");
         LOG_DB_LOCK_DUP = messages.getOrDefault("logDbLockDuplicate", "Ignoring duplicate lock record: {0}");
+        LOG_DB_LOCK_FAIL = messages.getOrDefault("logDbLockFail", "Failed to lock: {0}");
+        LOG_GAME_TYPE_UNKNOWN = messages.getOrDefault("logGameTypeUnknown", "Unknown mini-game type '{0}' (available: {1}), check your game-type config");
+        LOG_GAME_START_FAIL = messages.getOrDefault("logGameStartFail", "Failed to start mini-game '{0}': {1}");
         LOG_DB_LOCKER_FAIL = messages.getOrDefault("logDbLockerFail", "Failed to read locker: {0}");
         LOG_DB_UNLOCK_FAIL = messages.getOrDefault("logDbUnlockFail", "Failed to unlock: {0}");
         LOG_DB_ITEM_FAIL = messages.getOrDefault("logDbItemFail", "Failed to read lock item: {0}");
         LOG_DB_CLOSE_FAIL = messages.getOrDefault("logDbCloseFail", "Failed to close database connection");
+        LOG_LOCK_INDEX_LOADED = messages.getOrDefault("logLockIndexLoaded", "Loaded {0} lock records into memory index");
+        LOG_LOCK_INDEX_LOAD_FAIL = messages.getOrDefault("logLockIndexLoadFail", "Failed to load lock index: {0}");
         LOG_PACKET_LORE_FAIL = messages.getOrDefault("logPacketLoreFail", "Failed to inject lore into packet: {0}");
         LOG_PACKET_DEBUG = messages.getOrDefault("logPacketDebug", "[PacketManager] packet item NBT: {0} custom_data={1} | id={2}");
         LOG_CONFIG_LOAD_FAIL = messages.getOrDefault("logConfigLoadFail", "Failed to load config: {0}");
@@ -582,14 +755,17 @@ public class Messages {
         LOG_LANG_WRITE_FAIL = messages.getOrDefault("logLangWriteFail", "Failed to write language {0} to config: {1}");
         LOG_CONFIG_LOADED_DEBUG = messages.getOrDefault("logConfigLoadedDebug", "Config loaded: db={0} debug={1} lang={2}");
         LOG_CONFIG_KEEP_PREVIOUS = messages.getOrDefault("logConfigKeepPrevious", "Config load failure, keeping previous config");
+        LOG_CONFIG_ABORT_ENABLE = messages.getOrDefault("logConfigAbortEnable", "Config load failure on startup, disabling ChestTheft to avoid running with an empty config");
         LOG_LOCK_LEVEL_INVALID = messages.getOrDefault("logLockLevelInvalid", "Ignoring invalid lock level key '{0}' (expected a number) in {1}");
         LOG_LOCK_LEVEL_DUPLICATE = messages.getOrDefault("logLockLevelDuplicate", "Duplicate lock level '{0}' overridden by definition in {1}");
         LOG_LOCK_LEVEL_FALLBACK = messages.getOrDefault("logLockLevelFallback", "Lock level {0} not configured, using fallback level {1}");
         LOG_LOCK_LEVEL_FALLBACK_DEFAULT = messages.getOrDefault("logLockLevelFallbackDefault", "Lock level {0} not configured and no available level, using default config");
         LOG_LOCK_APPLIED = messages.getOrDefault("logLockApplied", "Player {0} locked {1} (level {2})");
         LOG_PICKLOCK_START_DEBUG = messages.getOrDefault("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
+        LOG_OWNER_CLOSE_RELOCK = messages.getOrDefault("logOwnerCloseRelock", "Player {0} closed {1} (picked lock), re-locked by owner");
         LOG_TRIGGER_INVALID_TYPE = messages.getOrDefault("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
         LOG_TRIGGER_REF_MISSING = messages.getOrDefault("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
+        LOG_TRIGGER_DUPLICATE_ID = messages.getOrDefault("logTriggerDuplicateId", "Duplicate trigger id '{0}' (in {1}) skipped to avoid double execution");
         LOG_TRIGGER_PARSE_FAIL = messages.getOrDefault("logTriggerParseFail", "Failed to parse lock trigger data: {0}");
         LOG_CONFIG_LOCKABLE_INVALID = messages.getOrDefault("logConfigLockableInvalid", "Invalid lockable block type '{0}' in lock.lockable-blocks, skipped");
         LOG_TUMBLER_BFINAL_INVALID = messages.getOrDefault("logTumblerBFinalInvalid", "tumbler-bar b-final must equal b-states-1 ({0}) to be winnable, forcibly clamped");
@@ -614,6 +790,17 @@ public class Messages {
         LOG_LOOT_SOUND_TYPE_INVALID = messages.getOrDefault("logLootSoundTypeInvalid", "Loot chest profile '{0}' open-effects sound type value '{1}' invalid, ignored");
         LOG_LOOT_FIELD_DEFAULT_USED = messages.getOrDefault("logLootFieldDefaultUsed", "Loot chest profile '{0}' {1} value '{2}' invalid, using default {3}");
         LOG_LOOT_GLOW_COLOR_INVALID = messages.getOrDefault("logLootGlowColorInvalid", "Loot chest profile '{0}' open-effects glow color value '{1}' invalid, ignored");
+        LOG_RECIPE_UNPAIR_NO_ITEM = messages.getOrDefault("logRecipeUnpairNoItem", "Failed to register key unpair recipe: no key item definition");
+        LOG_LOCK_RETURN_ITEM_FAIL = messages.getOrDefault("logLockReturnItemFail", "Failed to create default lock return item for chest at {0}, nothing returned");
+        LOG_LOOT_CHEST_FULL_NO_DROP = messages.getOrDefault("logLootChestFullNoDrop", "Loot chest is full and has no drop location, item lost: {0}");
+        LOG_RESOURCE_PACK_DIR_FAIL = messages.getOrDefault("logResourcePackDirFail", "Failed to create plugin directory: {0} - {1}");
+        LOG_RESOURCE_PACK_MISSING = messages.getOrDefault("logResourcePackMissing", "Built-in resource pack missing: {0}, please re-download the plugin or contact the author");
+        LOG_RESOURCE_PACK_EXPORTED = messages.getOrDefault("logResourcePackExported", "Resource pack file generated: {0}");
+        LOG_RESOURCE_PACK_EXPORT_FAIL = messages.getOrDefault("logResourcePackExportFail", "Failed to generate resource pack file: {0} - {1}");
+        LOG_TEMP_REVOKE_FAIL = messages.getOrDefault("logTempRevokeFail", "Failed to revoke temporary grant, record kept for startup cleanup: {0}");
+        LOG_TEMP_STALE_KEEP = messages.getOrDefault("logTempStaleKeep", "Revocation of stale grant not confirmed, keeping record for retry: {0} @ {1}");
+        LOG_TEMP_STALE_VALUE_SEEN = messages.getOrDefault("logTempStaleValueSeen", "Temp access value seen as the stored original ({0} @ {1}); it may be residue from a previously failed revoke");
+        LOG_TRIGGER_ACTION_FAIL = messages.getOrDefault("logTriggerActionFail", "Trigger action execution failed (trigger id={0}): {1}");
         LOG_MESSAGES_INIT = messages.getOrDefault("logMessagesInit", "Messages system initialized (lang={0})");
         LOG_MESSAGES_RELOAD = messages.getOrDefault("logMessagesReload", "Messages reloaded (lang={0})");
     }
@@ -631,7 +818,7 @@ public class Messages {
         Files.writeString(target, sb.toString(), StandardCharsets.UTF_8);
     }
 
-    /** 默认语言文件内容（与 resources/lang/ 下的内置文件保持一致）。 */
+    /** 默认语言文件内容（与 resources/lang/ 下的内置文件保持一致）。*/
     private static Map<String, String> defaultFileContent(String lang) {
         Map<String, String> map = new LinkedHashMap<>();
         if ("zh_cn".equals(lang)) {
@@ -663,6 +850,9 @@ public class Messages {
             map.put("setitemNoItem", "&c请手持物品后再试！");
             map.put("checkPdc", "&a物品信息:\n&e  ID: &f{0}\n&e  类型: &f{1}");
             map.put("checkKeyInfo", "&e  配对锁: &f{0}\n&e  锁凭证: &f{1}");
+            map.put("checkBaseNone", "&e  底座: &7未配置（本体材质 {0}）");
+            map.put("checkBaseResolved", "&e  底座: &a{0}");
+            map.put("checkBaseFailed", "&e  底座: &c{0} &7（解析失败，已回退材质 {1}）");
             map.put("none", "无");
             map.put("checkNotSpecial", "&c这不是一个特殊物品！");
             map.put("lootChestSpawned", "&a已召唤战利品箱：{0}");
@@ -671,6 +861,8 @@ public class Messages {
             map.put("unlockConfirm", "&e再次交互以确认卸锁！");
             map.put("pairSuccess", "&a钥匙已与这把锁配对！");
             map.put("pairNotLocker", "&c只有上锁者可以为该锁配对钥匙！");
+            map.put("repairConfirm", "&e再次交互以确认重新配对！");
+            map.put("repairSuccess", "&a钥匙已重新配对到这把锁！");
             map.put("keyNotMatched", "&c这把钥匙与这把锁不匹配！");
             map.put("chestProtected", "&c该箱子受到其他插件保护，已卸下锁");
             map.put("chestProtectedLockDenied", "&c该箱子受到其他插件保护，无法上锁");
@@ -692,6 +884,9 @@ public class Messages {
             map.put("logItemDuplicate", "重复的物品ID: {0}（{1} 覆盖之前的定义）");
             map.put("logItemInvalidType", "物品 {0} 缺少有效的 type（key / lock / picker），已跳过");
             map.put("logItemInvalidMaterial", "物品 {0} 的材质无效: {1}，使用默认值 {2}");
+            map.put("logItemExternalUnresolved", "物品 {0} 的外部插件物品底座 '{1}' 无法解析（插件未安装或 ID 有误），已回退使用材质 {2}");
+            map.put("logItemExternalApiError", "解析外部插件物品 {0} 失败：{1}（该物品已跳过或回退兜底材质；可能是插件版本不兼容）");
+            map.put("logItemExternalNamespaceGuessed", "外部插件物品底座 '{0}' 未写命名空间，已自动匹配到 '{1}'；建议在配置中改用完整 ID");
             map.put("logDbInit", "数据库已初始化: {0}");
             map.put("logDbConnectFail", "数据库连接失败: {0}");
             map.put("logDbCreateTableFail", "无法创建表 {0}");
@@ -703,14 +898,14 @@ public class Messages {
             map.put("logDbCloseFail", "关闭数据库连接失败");
             map.put("logPacketLoreFail", "为数据包注入 Lore 失败: {0}");
             map.put("logPacketDebug", "[PacketManager] 包物品 NBT: {0} custom_data={1} | id={2}");
-            map.put("logConfigLoadFail", "加载配置失败: {0}");
+            map.put("logConfigLoadFail", "配置文件加载失败: {0}");
             map.put("logConfigUpgradeFailed", "配置升级失败: {0}");
             map.put("logConfigUpgradeDone", "配置已升级: 新增 {0} 个配置项 (v{1})");
             map.put("logLangWriteFail", "写入语言 {0} 到配置失败: {1}");
             map.put("logConfigLoadedDebug", "配置已加载: db={0} debug={1} lang={2}");
             map.put("logConfigKeepPrevious", "配置加载失败，保留上一次的配置");
             map.put("logLockLevelInvalid", "忽略无效的锁等级键 '{0}'（应为数字）in {1}");
-            map.put("logLockLevelDuplicate", "重复的锁等级 '{0}'，被 {1} 中的定义覆盖");
+            map.put("logLockLevelDuplicate", "重复的锁等级配置 '{0}'，已被 {1} 中的定义覆盖");
             map.put("logLockLevelFallback", "锁等级 {0} 未配置，已回退使用可用等级 {1}");
             map.put("logLockLevelFallbackDefault", "锁等级 {0} 未配置且无可用等级，已回退使用默认配置");
             map.put("logLockApplied", "玩家 {0} 已上锁 {1}（等级 {2}）");
@@ -718,6 +913,7 @@ public class Messages {
             map.put("logTriggerInvalidType", "无效的触发器类型 '{0}'（trigger {1} in {2}）");
             map.put("logTriggerRefMissing", "引用的触发器 '{0}' 不存在（trigger {1} in lock-item）");
             map.put("logTriggerParseFail", "解析锁物品触发器数据失败: {0}");
+            map.put("logTriggerActionFail", "触发器动作执行失败（触发器 id={0}）：{1}");
             map.put("logConfigLockableInvalid", "lock.lockable-blocks 中存在无效的方块类型 '{0}'，已跳过");
             map.put("logTumblerBFinalInvalid", "tumbler-bar b-final 必须等于 b-states-1（{0}）才能成功，已强制钳制");
             map.put("logActionInvalidType", "无效的动作类型 '{0}'");
@@ -739,6 +935,15 @@ public class Messages {
             map.put("logLootSoundTypeInvalid", "战利品箱档案 '{0}' 的 open-effects sound type 配置值 '{1}' 无效，已忽略");
             map.put("logLootFieldDefaultUsed", "战利品箱档案 '{0}' 的 {1} 配置值 '{2}' 无效，使用默认 {3}");
             map.put("logLootGlowColorInvalid", "战利品箱档案 '{0}' 的 open-effects glow color 配置值 '{1}' 无效，已忽略");
+            map.put("logRecipeUnpairNoItem", "未注册钥匙拆解配方：缺少钥匙物品定义");
+            map.put("logLockReturnItemFail", "无法为 {0} 的箱子创建默认锁返还物品，卸锁未返还物品");
+            map.put("logLootChestFullNoDrop", "战利品箱容量不足且无掉落位置，物品丢失：{0}");
+            map.put("logResourcePackDirFail", "创建插件目录失败：{0} - {1}");
+            map.put("logResourcePackMissing", "内置材质包缺失：{0}，请重新下载插件或联系作者");
+            map.put("logResourcePackExported", "已生成材质包文件：{0}");
+            map.put("logResourcePackExportFail", "生成材质包文件失败：{0} - {1}");
+            map.put("logTempRevokeFail", "撤销临时授权失败，保留记录供启动清理：{0}");
+            map.put("logTempStaleKeep", "撤销残留授权未确认成功，保留记录下次重试：{0} @ {1}");
             map.put("logMessagesInit", "消息系统已初始化（语言: {0}）");
             map.put("logMessagesReload", "消息已重载（语言: {0}）");
         } else {
@@ -771,6 +976,9 @@ public class Messages {
             map.put("setitemNoItem", "&cYou must hold an item in your hand!");
             map.put("checkPdc", "&aItem info:\n&e  ID: &f{0}\n&e  Type: &f{1}");
             map.put("checkKeyInfo", "&e  Paired lock: &f{0}\n&e  Lock token: &f{1}");
+            map.put("checkBaseNone", "&e  Base: &7not configured (material {0})");
+            map.put("checkBaseResolved", "&e  Base: &a{0}");
+            map.put("checkBaseFailed", "&e  Base: &c{0} &7(unresolved, fallback material {1})");
             map.put("none", "none");
             map.put("checkNotSpecial", "&cThis is not a special item!");
             map.put("lootChestSpawned", "&aSpawned a loot chest: {0}");
@@ -779,6 +987,8 @@ public class Messages {
             map.put("unlockConfirm", "&eInteract again to confirm unlocking!");
             map.put("pairSuccess", "&aKey paired to this lock!");
             map.put("pairNotLocker", "&cOnly the locker can pair a key with this lock!");
+            map.put("repairConfirm", "&eInteract again to confirm re-pairing!");
+            map.put("repairSuccess", "&aKey re-paired to this lock!");
             map.put("keyNotMatched", "&cThis key does not match this lock!");
             map.put("keyChanged", "&cThis key is no longer valid; the lock has been changed!");
             map.put("chestProtected", "&cThis chest is protected by a protection plugin! The lock has been removed.");
@@ -802,6 +1012,9 @@ public class Messages {
             map.put("logItemInvalidType", "Item {0} missing a valid type (key / lock / picker), skipped");
             map.put("logItemGiveKeyInvalid", "Lock give-key {0} at {1} is not a valid key item, key not given");
             map.put("logItemInvalidMaterial", "Item {0} has invalid material: {1}, using default {2}");
+            map.put("logItemExternalUnresolved", "Item {0}: external item base '{1}' could not be resolved (plugin missing or wrong id), using fallback material {2}");
+            map.put("logItemExternalApiError", "Failed to resolve external-plugin item {0}: {1} (item skipped or fallback material used; the plugin version may be incompatible)");
+            map.put("logItemExternalNamespaceGuessed", "External item base '{0}' has no namespace, matched '{1}'; please use the full id in config");
             map.put("logDbInit", "Database initialized: {0}");
             map.put("logDbConnectFail", "Failed to connect to database: {0}");
             map.put("logDbCreateTableFail", "Failed to create table {0}");
@@ -825,6 +1038,7 @@ public class Messages {
             map.put("logLockLevelFallbackDefault", "Lock level {0} not configured and no available level, using default config");
             map.put("logLockApplied", "Player {0} locked {1} (level {2})");
             map.put("logPicklockStartDebug", "Player {0} started picklocking {1} (lock level {2}, picker level {3}, effective level {4})");
+            map.put("logOwnerCloseRelock", "Player {0} closed {1} (picked lock), re-locked by owner");
             map.put("logTriggerInvalidType", "Invalid trigger type '{0}' (trigger {1} in {2})");
             map.put("logTriggerRefMissing", "Referenced trigger '{0}' not found (trigger {1} in lock-item)");
             map.put("logTriggerParseFail", "Failed to parse lock trigger data: {0}");
@@ -851,6 +1065,16 @@ public class Messages {
             map.put("logLootSoundTypeInvalid", "Loot chest profile '{0}' open-effects sound type value '{1}' invalid, ignored");
             map.put("logLootFieldDefaultUsed", "Loot chest profile '{0}' {1} value '{2}' invalid, using default {3}");
             map.put("logLootGlowColorInvalid", "Loot chest profile '{0}' open-effects glow color value '{1}' invalid, ignored");
+            map.put("logRecipeUnpairNoItem", "Failed to register key unpair recipe: no key item definition");
+            map.put("logLockReturnItemFail", "Failed to create default lock return item for chest at {0}, nothing returned");
+            map.put("logLootChestFullNoDrop", "Loot chest is full and has no drop location, item lost: {0}");
+            map.put("logResourcePackDirFail", "Failed to create plugin directory: {0} - {1}");
+            map.put("logResourcePackMissing", "Built-in resource pack missing: {0}, please re-download the plugin or contact the author");
+            map.put("logResourcePackExported", "Resource pack file generated: {0}");
+            map.put("logResourcePackExportFail", "Failed to generate resource pack file: {0} - {1}");
+            map.put("logTempRevokeFail", "Failed to revoke temporary grant, record kept for startup cleanup: {0}");
+            map.put("logTempStaleKeep", "Revocation of stale grant not confirmed, keeping record for retry: {0} @ {1}");
+            map.put("logTriggerActionFail", "Trigger action execution failed (trigger id={0}): {1}");
             map.put("logMessagesInit", "Messages system initialized (lang={0})");
             map.put("logMessagesReload", "Messages reloaded (lang={0})");
         }

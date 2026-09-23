@@ -330,6 +330,12 @@ public class TumblerBarSession extends MiniGameSession {
     }
 
     @Override
+    public ClickResult onClick() {
+        // 本玩法由按键驱动（A/D/W），鼠标点击不参与判定：忽略点击，避免骑乘操作中误触鼠标判负
+        return ClickResult.CONTINUE;
+    }
+
+    @Override
     public boolean checkSuccess() {
         // 本玩法由按键驱动，不响应鼠标点击判定
         return false;

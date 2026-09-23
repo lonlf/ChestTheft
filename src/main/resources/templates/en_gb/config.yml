@@ -1,0 +1,334 @@
+# Config file version: used for auto-upgrade — new options are appended when this file is older than the template (do not edit manually)
+config-version: 1
+# Whether to output debug logs
+debug: false
+# Language: zh_cn / en_gb
+language: "en_gb"
+# Database settings
+database:
+  type: sqlite # sqlite / mysql
+  # MySQL connection parameters below (used when type: mysql)
+  ip: localhost
+  port: 3306
+  database: minecraft
+  user: root
+  password: 123456
+  usessl: false
+  # Lock index: fully loaded into memory at startup (reads no longer hit the DB)
+  abort-on-lock-load-error: true # abort enable on load failure; false = treat everything as locked
+  read-through-locks: false      # enable periodic index refresh when several servers share one DB
+  lock-refresh-seconds: 30       # refresh period in seconds (only when read-through-locks is on)
+  timezone: UTC  # MySQL serverTimezone: a value containing '+' must be encoded as %2B (e.g. GMT+8 → GMT%2B8), or use Asia/Shanghai directly
+# Protection plugin integration (interacts with supported protection plugins)
+protection:
+  # Whether picking is enabled on chests protected by a protection plugin
+  # false (default): protected chests cannot be locked; if a chest already has a lock, it is auto-unlocked and the lock item returned when the owner interacts
+  # true: other players can pick protected chests open
+  picking-enabled: false
+  # Dominion async-grant sync wait timeout (seconds)
+  # Dominion has no synchronous addMember/setMemberFlag API, so granting inside an event blocks the main thread until the DB write lands (default 1 second)
+  # 0: no blocking — the grant times out immediately, is abandoned and rolled back (the open is blocked this time; retry next time), removing main-thread lag
+  dominion-sync-timeout: 1.0
+# Picking minigame settings
+game:
+  # Minigame type (defines the gameplay): moving-bar = stop the moving cursor inside the unhit zone; extended games are registered by the plugin and selected here
+  game-type: moving-bar
+  # --- Common parameters (shared by all games; used by moving-bar and rhythm-bar) ---
+  timeout: 15        # Timeout (seconds)
+  cooldown: 3        # Cooldown after a pick ends (seconds)
+  access-duration: 60  # How long (seconds) the player may freely open the chest after a successful pick; 0 disables timed access and grants a single open chance instead
+  access-once-window: 60  # Validity window (seconds) of the single open chance: when access-duration is 0, use the chance within this window after picking succeeds; 0 = no limit (still one chance only; the chest relocks after the first open)
+  interrupt-damage: true    # Whether taking damage interrupts an ongoing pick
+  interrupt-move-range: 3.0  # Interrupt the pick when the player moves beyond this range (blocks); 0 or negative = no movement limit
+  oscillate: true   # Whether the cursor sweeps back and forth automatically; false switches to ride mode (the player mounts) and A/D move the cursor
+  render-mode: ascii  # Render mode: ascii = character bar (default, no resource pack required); bitmap = bitmap (players need the resource pack, see the font section)
+  bar-length: 15     # Total bar cells
+  unhit-length: 3    # Unhit zone length (moving-bar: clicking while the cursor is inside is judged; rhythm-bar: length of a single hit point)
+  move-interval: 10  # Cursor move interval (ticks; 20 ticks = 1 second)
+  # --- rhythm-bar specific parameters (ignored by other games): hit several unhit points in order; hitting all wins, missing or mistiming a click fails ---
+  hit-count: 3       # Number of hit points
+  hit-length: 2      # Length of each hit point (cells)
+  hit-min-gap: 3     # Minimum gap between hit points (cells)
+  # --- tumbler-bar specific parameters (ignored by other games): A/D adjusts A, W turns B; B can reach its final state only while A is in an unlockable state → success ---
+  a-states: 4          # Number of states of mechanism A (each state also has a special state shown on a failed attempt)
+  initial-a: 0         # A's initial state after a failed attempt resets
+  unlock-a: 1          # Unlockable A state (B can turn to the final state only while A is in this state; -1 = chosen randomly each pick)
+  b-states: 5          # Number of states of mechanism B (states count from 0)
+  b-final: 4           # B's final state (reaching it succeeds; default b-states-1, other values are clamped with a warning)
+  a-offset: 16         # Horizontal pixel position of A's top-left corner from the background's left edge
+  b-offset: 80         # Horizontal pixel position of B's top-left corner from the background's left edge
+  background-length: 4 # Total background length (cells, bitmap mode only; in ascii mode the bar length covers the A/B positions automatically)
+  max-attempts: 3      # Maximum attempts (exceeding this fails the pick)
+  tumbler-width: 3     # Display width of the A/B state icons (cells, ascii mode only; bitmap icons are fixed at 32px)
+  # Note: move-interval (A/D step interval) and render-mode share the same keys as the common parameters above; override them explicitly per level when needed
+  #       tumbler's move-interval defaults to 6 in code (the common default 10 above is for moving-bar/rhythm-bar)
+  # --- Sound configuration (key: sound name — "minecraft:namespaced path" or a Bukkit short name like "note.pling";
+  #      source: sound category master/music/record/weather/block/hostile/neutral/players/ambient/voice;
+  #      volume/pitch: volume and pitch; an empty key or a removed node disables the sound; level configs may override single nodes) ---
+  sounds:
+    # Pick success / fail (common to all games)
+    success:
+      key: "minecraft:block.note_block.pling"
+      source: "master"
+      volume: 1.0
+      pitch: 1.5
+    fail:
+      key: "minecraft:block.note_block.bass"
+      source: "master"
+      volume: 1.0
+      pitch: 0.8
+    # moving-bar / rhythm-bar: the cursor moved one cell (A/D movement in ride mode applies too)
+    move:
+      key: "minecraft:block.note_block.hat"
+      source: "master"
+      volume: 0.6
+      pitch: 1.2
+    # moving-bar / rhythm-bar: a click hit the unhit zone / a hit point
+    hit:
+      key: "minecraft:block.note_block.pling"
+      source: "master"
+      volume: 0.8
+      pitch: 1.8
+    # tumbler-bar: A turned (not yet aligned to the unlockable state)
+    a-move:
+      key: "minecraft:block.note_block.hat"
+      source: "master"
+      volume: 0.6
+      pitch: 1.0
+    # tumbler-bar: A reached the unlockable state (special cue sound)
+    a-unlock:
+      key: "minecraft:block.note_block.pling"
+      source: "master"
+      volume: 1.0
+      pitch: 2.0
+    # tumbler-bar: B turned
+    b-move:
+      key: "minecraft:block.note_block.snare"
+      source: "master"
+      volume: 0.7
+      pitch: 1.0
+
+# Key features
+key:
+  # Whether the key-unlock feature is enabled (paired key + interaction key removes the lock and returns the lock item; the key must be held)
+  unlock-enabled: true
+  # Whether a non-locker holding the paired key may remove the lock; false (default): only the locker may
+  unlock-by-holder: false
+  # Whether key pairing is enabled (unpaired key + interaction key, done by the locker)
+  pair-enabled: true
+  # Whether a paired key may be re-paired to another lock (interaction key + two-step confirmation; false: paired keys can never be re-paired)
+  repair-enabled: false
+  # Interaction key action: LEFT / RIGHT
+  interaction-action: LEFT
+  # Whether sneaking is required for the interaction
+  interaction-sneak: true
+  # Whether the key must be held in hand to open a locked chest; false: having it in the inventory is enough
+  require-in-hand: true
+  # Particle highlight of matching chests while holding a key paired to them
+  particle-enabled: true
+  # Particle color (a color name like GOLD/RED/AQUA, or a #RRGGBB hex)
+  particle-color: GOLD
+  # Particle radius (blocks; particles play only within this distance from the chest)
+  particle-radius: 8.0
+  # Glow highlight of matching chests while holding a key paired to them
+  glow-enabled: true
+  # Glow color (a color name like GOLD/RED/AQUA, or a #RRGGBB hex)
+  glow-color: GOLD
+  # Glow radius (blocks; the chest glows only within this distance from the player)
+  glow-radius: 8.0
+
+# Loot chest settings (drops of dead mobs are stored into loot chests; profiles are configured in the lootchest/ folder)
+lootchest:
+  # Whether vanilla drops are kept on mob death (default on; when false, mobs drop no items directly but spawn a loot chest instead)
+  vanilla-drop: true
+  # Display mode: display (display entity, default, rendered by the server via packets) / block (place a real chest block)
+  display-type: display
+  # Whether an unemptied loot chest is kept (kept chests can be reopened; auto-despawns once emptied; default on)
+  keep: true
+  # When keep is false, whether the leftover items drop at the chest location (default false: destroyed when the chest despawns)
+  drop-remaining: false
+  # Expire time of a chest never opened (seconds); 0 = never expires
+  expire-time: 600
+  # Expire time of a chest after it was opened (seconds); 0 = never expires
+  expire-time-opened: 300
+  # Interaction range with the display entity (display mode, blocks)
+  interaction-range: 4.0
+  # Worlds where loot chests are not spawned
+  worlds:
+    exclude: []
+
+# Crafting recipe settings
+recipe:
+  # A paired key can be crafted directly into an unpaired key (recipe: 1 paired key → 1 unpaired key)
+  # true: recipe enabled; false: disabled (paired keys cannot be restored via the crafting table)
+  key-crafting-unpair-enabled: true
+
+# Lockable block types (only these can be locked; block-break/explosion clearing and unlock target checks use the same list)
+lock:
+  # Whether the owner relocks a picked chest immediately when closing it (revokes the global unlock, preventing others from opening it further)
+  # true: opening and closing a picked chest relocks it right away; false: keep the original unlock window (timed / single use)
+  owner-close-relock: true
+  # Hopper guard: block item moves from/to locked containers (hoppers could drain locked chests)
+  hopper-guard:
+    extract: true # block hopper extraction (locked chest -> hopper/minecart)
+    insert: true  # block hopper insertion (hopper -> locked chest)
+  # Allowed lockable block types; invalid entries are logged and skipped at startup, an empty list falls back to the default (chests and trapped chests)
+  lockable-blocks:
+    # Chest-type containers
+    - CHEST
+    - TRAPPED_CHEST
+    - ENDER_CHEST
+    - BARREL
+    - SHULKER_BOX
+    - WHITE_SHULKER_BOX
+    - ORANGE_SHULKER_BOX
+    # ... other shulker box colors
+    # Doors
+    - acacia_door
+    - BIRCH_DOOR
+    - CRIMSON_DOOR
+    - DARK_OAK_DOOR
+    - IRON_DOOR
+    - JUNGLE_DOOR
+    - MANGROVE_DOOR
+    - OAK_DOOR
+    - SPRUCE_DOOR
+    - WARPED_DOOR
+    # Trapdoors
+    - ACACIA_TRAPDOOR
+    - BIRCH_TRAPDOOR
+    - CRIMSON_TRAPDOOR
+    - DARK_OAK_TRAPDOOR
+    - IRON_TRAPDOOR
+    - JUNGLE_TRAPDOOR
+    - MANGROVE_TRAPDOOR
+    - OAK_TRAPDOOR
+    - SPRUCE_TRAPDOOR
+    - WARPED_TRAPDOOR
+    # Fence gates
+    - ACACIA_FENCE_GATE
+    - BIRCH_FENCE_GATE
+    - CRIMSON_FENCE_GATE
+    - DARK_OAK_FENCE_GATE
+    - JUNGLE_FENCE_GATE
+    - MANGROVE_FENCE_GATE
+    - OAK_FENCE_GATE
+    - SPRUCE_FENCE_GATE
+    - WARPED_FENCE_GATE
+
+# Display mode of each interaction message: message (chat) / actionbar / title
+message-format:
+  pickingSuccess: title   # Pick succeeded
+  pickingFail: title      # Pick failed
+  pickingStart: title     # Picking started
+  pickingCancel: title   # Picking cancelled
+  pickingInterrupt: title   # Picking interrupted (damage / out of range)
+  lockPicked: actionbar   # Opening an already picked lock
+  pickingTimeout: title   # Picking timed out
+  pickingCooldown: title  # Picking cooldown
+  lockSuccess: title        # Locked successfully
+  blockLocked: actionbar      # Block is locked
+  lockNotLockable: message  # Block cannot be locked
+  lockFailed: message       # Lock write failed (database error)
+  reloadFailed: message     # Configuration reload failed
+  keyOnUnlocked: message    # Hint when left-clicking an unlocked block while holding a key
+  givenItemDropped: message # Hint when a given item is dropped because the inventory is full
+  unlockSuccess: message    # Lock removed
+  unlockConfirm: actionbar    # Unlock confirmation
+  pairSuccess: message      # Key paired
+  pairNotLocker: message    # Cannot pair
+  repairConfirm: actionbar    # Re-pair confirmation
+  repairSuccess: message      # Re-paired successfully
+  keyNotMatched: actionbar    # Key does not match
+  keyChanged: actionbar       # Key replaced
+  chestProtected: message    # Protected chest unlocked
+  chestProtectedLockDenied: message    # Protected chest cannot be locked
+  chestProtectedAccessDenied: message  # Protected chest cannot be operated
+  noPermission: message     # No permission
+  playerOnly: message       # Players only
+  playerNotFound: message   # Player offline
+  invalidId: message        # Invalid item ID
+  invalidAmount: message    # Invalid amount
+  giveSuccess: message      # Item given
+  giveDropped: message      # Item given (inventory full, dropped at feet)
+  setItemSuccess: message   # Item set successfully
+  setItemNoItem: message    # No item in hand
+  checkNotSpecial: message  # Not a special item
+
+# Bitmap rendering (resource pack fonts): font names and code points must match the generated resource pack; do not change unless necessary
+font:
+  # Offset-positioning font (space type): pushes the cursor/hit zone to a given pixel position
+  offset: "chesttheft:offset_chars"
+  # Cursor bitmap font (bitmap type): contains base/unhit/cursor/blank/done cell glyphs
+  bar: "chesttheft:bar"
+  # Offset character code points (hex, no \u prefix): the key is the pixel offset, the value is the matching code point
+  # Matches the advance definitions in assets/chesttheft/font/offset_chars.json of the resource pack
+  offset-chars:
+    '1': e00a
+    '2': e00b
+    '4': e00c
+    '8': e00d
+    '16': e00e
+    '32': e00f
+    '64': e010
+    '128': e011
+    '-1': e001
+    '-2': e002
+    '-4': e003
+    '-8': e004
+    '-16': e005
+    '-32': e006
+    '-64': e007
+    '-128': e008
+  # Bitmap character code points (hex): normal cells bar_cell.png (8px per slice) + edge cells bar_edge.png (22px / 2 glyphs = 11px per slice)
+  bar-chars:
+    base: e100      # Base cell (bar background, 8px)
+    unhit: e101     # Unhit cell (red, hit point not yet hit, 8px)
+    cursor: e102    # Cursor cell (yellow, current cursor, 8px)
+    blank: e103     # Blank cell (fully transparent placeholder, 8px)
+    done: e106      # Done cell (green, hit point hit, 8px)
+    left: e104      # Left edge cell (11px, leftmost bar segment)
+    right: e105     # Right edge cell (11px, rightmost bar segment)
+  # Tumbler-bar state code points: background / A normal states / A special states (shown on a failed attempt) / B states
+  # Adding a state: append a numeric key in the matching section below (e.g. a: 4: e128) and update the state count of the matching locklevel.yml level; no code change needed
+  tumbler-chars:
+    background: e140  # Full background image (96x96, single glyph, no seams; A/B icons are positioned on it; multiple tiles separated by commas)
+    a:
+      0: e120       # Mechanism A state 0
+      1: e121       # Mechanism A state 1
+      2: e122       # Mechanism A state 2
+      3: e123       # Mechanism A state 3
+      4: e124       # Mechanism A state 4
+    a-special:
+      0: e125       # Mechanism A state 0 special (tumbler_a_special.png, a distinct glyph set from the normal states)
+      1: e126       # Mechanism A state 1 special
+      2: e127       # Mechanism A state 2 special
+      3: e128       # Mechanism A state 3 special
+      4: e129       # Mechanism A state 4 special
+    b:
+      0: e130       # Mechanism B state 0
+      1: e131       # Mechanism B state 1
+      2: e132       # Mechanism B state 2
+      3: e133       # Mechanism B state 3
+      4: e134       # Mechanism B state 4
+  # Bitmap calculation parameters (must match the resource pack; used to compute render-gap compensation offsets)
+  # Scale ratio = height / PNG height; compensation = advance(rounded up) + glyph-gap - render width(rounded down)
+  # Keeping height equal to the PNG height (1:1, unscaled) is recommended to avoid endpoint overlap flicker from rounding
+  bitmap:
+    cell-png-height: 8     # bar_cell.png height (pixels)
+    cell-slice-width: 8    # bar_cell slice width per glyph (pixels)
+    cell-height: 8         # height of the bar_cell provider in bar.json (render height, pixels)
+    edge-png-height: 8     # bar_edge.png height (pixels)
+    edge-slice-width: 11   # bar_edge slice width per glyph (pixels, = PNG width ÷ glyph count = 22 ÷ 2)
+    edge-height: 8         # height of the bar_edge provider in bar.json (render height, pixels)
+    glyph-gap: 1           # fixed gap the client adds after each glyph (pixels)
+    edge-overlay-outset: 3 # pixels of the edge visible outside when the cursor overlaps an endpoint (default pack edge 11px/cursor 8px: the cursor covers the remaining 8px body starting 3px from the outer edge; must be ≤ edge width − cursor width)
+    tumbler-tile: 48       # tumbler (tumbler-bar) background cell / A/B icon size (pixels, 48x48 tiles; must match tumbler_bg/tumbler_a/tumbler_a_special/tumbler_b in the resource pack)
+    tumbler-png-height: 96 # tumbler PNG height (pixels; must match the resource pack PNG height)
+    tumbler-height: 96     # height of the tumbler provider in bar.json (render height, pixels)
+    # Overall vertical position of the tumbler bar: the resource pack bar.json is authoritative.
+    # The server reads this value only for calculation/diagnostics; to adjust the height edit the ascent of the tumbler provider in bar.json (larger moves the bar down, smaller up; must be <= height)
+    tumbler-ascent: 64
+    # Overall horizontal shift of the bitmap bar (pixels, positive = right, negative = left): a pure server-side render offset, applies on /reload, no resource pack needed
+    # Vertical position cannot be adjusted by config: the subtitle baseline is hard-coded by the client engine; pixel-level vertical offsets require editing the ascent in bar.json (see above)
+    horizontal-offset: 0

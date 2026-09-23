@@ -16,7 +16,7 @@ public class FontConfig {
 
     /** 偏移定位字体（space 类型）：把后续字符推进/回退指定像素。 */
     private final String offsetFont;
-    /** 游标位图字体（bitmap 类型）：普通格 8px（底/未完成/游标/完成/空白）+ 边框格 9px（左右端）。 */
+    /** 游标位图字体（bitmap 类型）：普通格 8px（底/未完成/游标/完成/空白）+ 边框格 11px（左右端）。 */
     private final String barFont;
     /** 像素偏移 → 码位字符（±1/2/4/8/16/32/64/128）。 */
     private final Map<Integer, Character> offsetChars;
@@ -57,7 +57,7 @@ public class FontConfig {
     private final int edgeHeight;
     /** 客户端渲染中每个字形后固定的间隙（像素）。 */
     private final int glyphGap;
-    /** 端点游标重叠时，边框格外侧露出的边框像素（如边框格 15px、游标 8px 时设 3，左右各露出 3px）。 */
+    /** 端点游标重叠时，边框格外侧露出的边框像素（默认包边框格 11px、游标 8px → 设 3，左右对称；须 ≤ 边框宽 − 游标宽）。 */
     private final int edgeOverlayOutset;
     /** 机关转轮（tumbler-bar）背景格/A/B 图标尺寸（像素，48x48 方块；须与资源包 tumbler_bg/tumbler_a/tumbler_b 一致）。 */
     private final int tumblerTile;
@@ -152,10 +152,10 @@ public class FontConfig {
         int cellSliceWidth = readInt(bitmap, "cell-slice-width", 8);
         int cellHeight = readInt(bitmap, "cell-height", 8);
         int edgePngHeight = readInt(bitmap, "edge-png-height", 8);
-        int edgeSliceWidth = readInt(bitmap, "edge-slice-width", 9);
+        int edgeSliceWidth = readInt(bitmap, "edge-slice-width", 11);
         int edgeHeight = readInt(bitmap, "edge-height", 8);
         int glyphGap = readInt(bitmap, "glyph-gap", 1);
-        int edgeOverlayOutset = readInt(bitmap, "edge-overlay-outset", 1);
+        int edgeOverlayOutset = readInt(bitmap, "edge-overlay-outset", 3);
         int tumblerTile = readInt(bitmap, "tumbler-tile", 48);
         int tumblerPngHeight = readInt(bitmap, "tumbler-png-height", 96);
         int tumblerHeight = readInt(bitmap, "tumbler-height", 96);

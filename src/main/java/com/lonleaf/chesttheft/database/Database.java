@@ -9,6 +9,11 @@ import java.util.UUID;
 public interface Database {
     void init();
 
+    /**
+     * 载入全部锁记录（启动时构建内存索引）。失败抛 RuntimeException，由调用方决定中止启用或降级。
+     */
+    List<LockRecord> loadAllLocks();
+
     boolean isLocked(BlockLocation location);
 
     /**
@@ -33,12 +38,11 @@ public interface Database {
     /** 返回该锁保存的物品数据（含触发器标签），无记录时返回 null，不删除记录。 */
     ItemStack getLockItem(BlockLocation location);
 
-    /** 解除锁定并返回保存的锁物品，无记录时返回 null。 */
-    ItemStack unlock(BlockLocation location);
+    /** 解除锁定并返还保存的锁物品；三态返回，区分"已删除 / 无记录 / 数据库失败"。 */
+    UnlockResult unlock(BlockLocation location);
 
     /**
-     * 记录一次临时授权（打开容器前授予，供插件崩溃后启动清理残留；仅持久化型保护需要）。
-     * 同一 (插件, 位置, 玩家) 只会存在一条有效记录：撤销后即删除，重新授权时覆盖写入。
+     * 记录一次临时授权（仅持久化型保护需要，供崩溃后启动清理）：同一 (插件, 位置, 玩家) 仅保留一条。
      *
      * @return 是否记录成功；失败时调用方应中止授权，避免"已授权但无记录"导致残留权限无法清理
      */

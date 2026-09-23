@@ -16,7 +16,7 @@ public class SQLiteDatabase extends AbstractDatabase {
 
     public SQLiteDatabase(File dataFolder, Logger logger, boolean debug) {
         super(logger, debug);
-        this.url = "jdbc:sqlite:" + new File(dataFolder, "chest_data.db").getAbsolutePath();
+        this.url = "jdbc:sqlite:" + new File(dataFolder, "chesttheft.db").getAbsolutePath();
         connect();
     }
 

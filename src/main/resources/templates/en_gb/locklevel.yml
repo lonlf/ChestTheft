@@ -1,0 +1,173 @@
+# Per-level picking minigame configuration: numeric keys are level IDs; each level maps to one "gameplay × render × control" combination,
+# letting /chesttheft debug minigame <level> cover every situation in picking regression tests
+# Level 0: when defined, overrides the default config (the game section of config.yml); when undefined, level 0 uses the default config
+# Positive levels not configured here fall back by proximity: next lower available level → next higher available level → default config
+# game-type: the minigame type used by this level (moving-bar = moving cursor / rhythm-bar = rhythm bar / tumbler-bar = tumbler reels); common parameters live in the game section of config.yml
+# Level matrix (grouped by gameplay):
+#   0-3 moving-bar: 0 sweep ascii / 1 sweep bitmap / 2 ride ascii / 3 ride bitmap
+#   4-7 rhythm-bar: 4 sweep ascii / 5 sweep bitmap / 6 ride ascii / 7 ride bitmap
+#   8-9 tumbler-bar: 8 ascii / 9 bitmap
+# Render: ascii needs no resource pack / bitmap requires installing the resource pack; control: oscillate=true sweeps automatically / false ride mode (A/D move the cursor)
+# Difficulty: a longer bar, a shorter unhit zone, a smaller move-interval or more hit points → harder
+0:
+  name: default     # Baseline (matches the config.yml game defaults): moving-bar sweep ascii, wide unhit zone, slow
+  game-type: moving-bar
+  oscillate: true
+  render-mode: ascii
+  bar-length: 15
+  unhit-length: 3
+  move-interval: 10
+  timeout: 15
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+1:
+  name: moving-bitmap   # moving-bar sweep + bitmap render (needs the resource pack)
+  game-type: moving-bar
+  oscillate: true
+  render-mode: bitmap
+  bar-length: 20
+  unhit-length: 2
+  move-interval: 8
+  timeout: 20
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+2:
+  name: moving-ride     # moving-bar ride: A/D control the cursor manually (ascii)
+  game-type: moving-bar
+  oscillate: false
+  render-mode: ascii
+  bar-length: 20
+  unhit-length: 3
+  move-interval: 6
+  timeout: 25
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+3:
+  name: moving-ride-bitmap # moving-bar ride + bitmap render (needs the resource pack; the plugin keep-alive refreshes the bar while idle)
+  game-type: moving-bar
+  oscillate: false
+  render-mode: bitmap
+  bar-length: 20
+  unhit-length: 3
+  move-interval: 6
+  timeout: 25
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+4:
+  name: rhythm          # rhythm-bar sweep ascii: hit 3 unhit points in order
+  game-type: rhythm-bar
+  oscillate: true
+  render-mode: ascii
+  bar-length: 20
+  hit-count: 3      # Number of hit points
+  hit-length: 2     # Length of each hit point (cells)
+  hit-min-gap: 3    # Minimum gap between hit points (cells)
+  move-interval: 8
+  timeout: 20
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+5:
+  name: rhythm-bitmap   # rhythm-bar sweep + bitmap render + 4 hit points (needs the resource pack)
+  game-type: rhythm-bar
+  oscillate: true
+  render-mode: bitmap
+  bar-length: 25
+  hit-count: 4
+  hit-length: 2
+  hit-min-gap: 3
+  move-interval: 6
+  timeout: 25
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+6:
+  name: rhythm-ride     # rhythm-bar ride: A/D control the cursor manually (ascii)
+  game-type: rhythm-bar
+  oscillate: false
+  render-mode: ascii
+  bar-length: 20
+  hit-count: 3
+  hit-length: 2
+  hit-min-gap: 3
+  move-interval: 6
+  timeout: 25
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+7:
+  name: rhythm-ride-bitmap # rhythm-bar ride + bitmap render (needs the resource pack)
+  game-type: rhythm-bar
+  oscillate: false
+  render-mode: bitmap
+  bar-length: 20
+  hit-count: 3
+  hit-length: 2
+  hit-min-gap: 3
+  move-interval: 6
+  timeout: 25
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+8:
+  name: tumbler    # tumbler reels: A/D adjusts A, W turns B; B can unlock only while A is aligned to the unlockable state
+  game-type: tumbler-bar
+  render-mode: ascii   # For testing, switch to bitmap (requires installing the new resource pack)
+  a-states: 5          # Number of states of mechanism A (each state also has a special state)
+  initial-a: 0         # A's initial state after a failed attempt resets
+  unlock-a: 1          # Unlockable A state (B can turn to the final state only while A is in this state; -1 = chosen randomly each pick)
+  b-states: 5          # Number of states of mechanism B (0~4)
+  b-final: 4           # B's final state (reaching it succeeds)
+  a-offset: 224           # A's horizontal position in the background (px, centered at 224; vertical position is fixed to the upper part by the resource pack ascent)
+  b-offset: 224           # B's horizontal position in the background (px, centered at 224; vertical position is fixed to the lower part by the resource pack ascent)
+  background-length: 15   # Total background cells (each cell = 32px; the background is one full 480x96 image; bitmap mode only)
+  tumbler-width: 3        # Display width of the A/B state icons (cells, ascii mode only; bitmap icons are fixed at 32px)
+  max-attempts: 3      # Maximum attempts (exceeding this fails the pick)
+  move-interval: 6     # Step interval of A/D adjusting A (ticks)
+  timeout: 30
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0
+9:
+  name: tumbler-bitmap # tumbler bitmap: one 96x96 background image + transparent A/B icons positioned on top (needs the resource pack)
+  game-type: tumbler-bar
+  render-mode: bitmap
+  a-states: 5          # Number of states of mechanism A (each state also has a special state)
+  initial-a: 0         # A's initial state after a failed attempt resets
+  unlock-a: 1          # Unlockable A state (B can turn to the final state only while A is in this state; -1 = chosen randomly each pick)
+  b-states: 5          # Number of states of mechanism B (0~4)
+  b-final: 4           # B's final state (reaching it succeeds)
+  a-offset: 24         # Horizontal position of A's top-left corner from the background's left edge (px; 24 = (96-48)/2, centered with B; vertical position is fixed to the upper part by the PNG padding)
+  b-offset: 24         # Horizontal position of B's top-left corner from the background's left edge (px; aligned with A so the upper/lower tumblers line up horizontally; vertical position is fixed to the lower part by the PNG padding)
+  background-length: 2 # Total background cells (each cell = 48px; the background is one 96x96 image, hence 2 cells; bitmap mode only)
+  tumbler-width: 3        # Display width of the A/B state icons (cells, ascii mode only; bitmap icons are fixed at 48px)
+  max-attempts: 3      # Maximum attempts (exceeding this fails the pick)
+  move-interval: 6     # Step interval of A/D adjusting A (ticks)
+  timeout: 30
+  cooldown: 3
+  access-duration: 60
+  access-once-window: 60
+  interrupt-damage: true
+  interrupt-move-range: 3.0

@@ -74,14 +74,14 @@ public class ActionManager {
         register("message", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
             for (String line : toList(value)) {
-                ctx.getPlayer().sendMessage(color(ctx.render(line)));
+                ctx.player().sendMessage(color(ctx.render(line)));
             }
         });
         register("random-message", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
             List<String> list = toList(value);
             if (!list.isEmpty()) {
-                ctx.getPlayer().sendMessage(color(ctx.render(list.get(ThreadLocalRandom.current().nextInt(list.size())))));
+                ctx.player().sendMessage(color(ctx.render(list.get(ThreadLocalRandom.current().nextInt(list.size())))));
             }
         });
         register("broadcast", (value, chance) -> ctx -> {
@@ -102,7 +102,7 @@ public class ActionManager {
         register("player-command", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
             for (String command : toList(value)) {
-                ctx.getPlayer().performCommand(ctx.render(command));
+                ctx.player().performCommand(ctx.render(command));
             }
         });
         register("random-command", (value, chance) -> ctx -> {
@@ -116,18 +116,18 @@ public class ActionManager {
         // 界面类
         register("close-inv", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
-            ctx.getPlayer().closeInventory();
+            ctx.player().closeInventory();
         });
         register("actionbar", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
-            ctx.getPlayer().spigot().sendMessage(ChatMessageType.ACTION_BAR,
+            ctx.player().spigot().sendMessage(ChatMessageType.ACTION_BAR,
                     new TextComponent(color(ctx.render(String.valueOf(value)))));
         });
         register("random-actionbar", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
             List<String> list = toList(value);
             if (!list.isEmpty()) {
-                ctx.getPlayer().spigot().sendMessage(ChatMessageType.ACTION_BAR,
+                ctx.player().spigot().sendMessage(ChatMessageType.ACTION_BAR,
                         new TextComponent(color(ctx.render(list.get(ThreadLocalRandom.current().nextInt(list.size()))))));
             }
         });
@@ -140,7 +140,7 @@ public class ActionManager {
             int fadeOut = v.getInt("fade-out", 10);
             return ctx -> {
                 if (Math.random() > chance) return;
-                ctx.getPlayer().sendTitle(color(ctx.render(title)), color(ctx.render(subtitle)), fadeIn, stay, fadeOut);
+                ctx.player().sendTitle(color(ctx.render(title)), color(ctx.render(subtitle)), fadeIn, stay, fadeOut);
             };
         });
         register("random-title", (value, chance) -> {
@@ -158,7 +158,7 @@ public class ActionManager {
                 if (Math.random() > chance) return;
                 String title = titlePool.get(ThreadLocalRandom.current().nextInt(titlePool.size()));
                 String subtitle = subtitlePool.get(ThreadLocalRandom.current().nextInt(subtitlePool.size()));
-                ctx.getPlayer().sendTitle(color(ctx.render(title)), color(ctx.render(subtitle)), fadeIn, stay, fadeOut);
+                ctx.player().sendTitle(color(ctx.render(title)), color(ctx.render(subtitle)), fadeIn, stay, fadeOut);
             };
         });
         register("sound", (value, chance) -> {
@@ -169,27 +169,27 @@ public class ActionManager {
             float pitch = (float) v.getDouble("pitch", 1.0);
             return ctx -> {
                 if (Math.random() > chance || key == null) return;
-                ctx.getPlayer().playSound(ctx.getPlayer().getLocation(), key, category, volume, pitch);
+                ctx.player().playSound(ctx.player().getLocation(), key, category, volume, pitch);
             };
         });
         // 属性类
         register("exp", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
-            ctx.getPlayer().giveExp((int) Math.round(number(value)));
+            ctx.player().giveExp((int) Math.round(number(value)));
         });
         register("level", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
-            Player p = ctx.getPlayer();
+            Player p = ctx.player();
             p.setLevel(Math.max(0, p.getLevel() + (int) Math.round(number(value))));
         });
         register("food", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
-            Player p = ctx.getPlayer();
+            Player p = ctx.player();
             p.setFoodLevel(Math.max(0, Math.min(20, p.getFoodLevel() + (int) Math.round(number(value)))));
         });
         register("saturation", (value, chance) -> ctx -> {
             if (Math.random() > chance) return;
-            Player p = ctx.getPlayer();
+            Player p = ctx.player();
             p.setSaturation(Math.max(0, p.getSaturation() + (float) number(value)));
         });
         register("potion-effect", (value, chance) -> {
@@ -199,7 +199,7 @@ public class ActionManager {
             int amplifier = v.getInt("amplifier", 0);
             return ctx -> {
                 if (Math.random() > chance || type == null) return;
-                ctx.getPlayer().addPotionEffect(new PotionEffect(type, duration, amplifier));
+                ctx.player().addPotionEffect(new PotionEffect(type, duration, amplifier));
             };
         });
         // 组合类
@@ -235,11 +235,11 @@ public class ActionManager {
                 if (Math.random() > chance || material == null) return;
                 ItemStack item = new ItemStack(material, amount);
                 if (toInventory) {
-                    for (ItemStack drop : ctx.getPlayer().getInventory().addItem(item).values()) {
-                        ctx.getPlayer().getWorld().dropItemNaturally(ctx.getPlayer().getLocation(), drop);
+                    for (ItemStack drop : ctx.player().getInventory().addItem(item).values()) {
+                        ctx.player().getWorld().dropItemNaturally(ctx.player().getLocation(), drop);
                     }
                 } else {
-                    ctx.getPlayer().getWorld().dropItemNaturally(ctx.getPlayer().getLocation(), item);
+                    ctx.player().getWorld().dropItemNaturally(ctx.player().getLocation(), item);
                 }
             };
         });

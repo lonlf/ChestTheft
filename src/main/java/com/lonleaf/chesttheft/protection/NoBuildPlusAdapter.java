@@ -54,8 +54,9 @@ public class NoBuildPlusAdapter extends TempAccessAdapter {
     }
 
     @Override
-    protected void revokeFromRecord(Block block, UUID playerUuid, String extra) {
-        // 附件型不落库，无记录可恢复
+    protected boolean revokeFromRecord(Block block, UUID playerUuid, String extra) {
+        // 附件型不落库，无记录可恢复（实际不会被调用，仅满足签名）
+        return true;
     }
 
     @Override

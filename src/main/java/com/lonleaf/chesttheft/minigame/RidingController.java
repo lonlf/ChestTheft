@@ -8,6 +8,7 @@ import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerInput;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientSteerVehicle;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import me.tofaa.entitylib.meta.types.LivingEntityMeta;
 import me.tofaa.entitylib.wrapper.WrapperEntity;
@@ -18,8 +19,12 @@ import java.util.function.IntConsumer;
 /**
  * 骑乘游标控制器：发包生成仅对玩家可见的隐形坐骑，使玩家进入骑乘状态（锁定原地），
  * 监听骑乘输入包把 A/D 键转换为游标方向信号（-1 左移 / 0 无输入 / 1 右移）。
+ * 输入包按版本双兼容：1.21.2+ 用 Player Input，1.19.4~1.21.1 用 Steer Vehicle。
  */
 public final class RidingController implements PacketListener {
+
+    /** 输入死区：旧版骑乘输入为模拟量，取值可能残留极小值。 */
+    private static final float INPUT_DEAD_ZONE = 0.1f;
 
     private final Player player;
     /** 方向回调（netty 线程调用）：-1 左 / 0 无 / 1 右，每次输入包触发一次。 */
@@ -81,18 +86,27 @@ public final class RidingController implements PacketListener {
 
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
-        if (event.getPacketType() != PacketType.Play.Client.PLAYER_INPUT) {
-            return;
-        }
         Player p = event.getPlayer();
         if (p == null || !p.getUniqueId().equals(player.getUniqueId())) {
             return;
         }
-        WrapperPlayClientPlayerInput input = new WrapperPlayClientPlayerInput(event);
-        int dir = input.isLeft() ? -1 : input.isRight() ? 1 : 0;
-        onDirection.accept(dir);
-        if (onForward != null) {
-            onForward.accept(input.isForward());
+        // 1.21.2+：Player Input（左右/前进为显式布尔位）
+        if (event.getPacketType() == PacketType.Play.Client.PLAYER_INPUT) {
+            WrapperPlayClientPlayerInput input = new WrapperPlayClientPlayerInput(event);
+            onDirection.accept(input.isLeft() ? -1 : input.isRight() ? 1 : 0);
+            if (onForward != null) {
+                onForward.accept(input.isForward());
+            }
+            return;
+        }
+        // 1.19.4~1.21.1：Steer Vehicle（模拟量）。原版 xxa 左为正，与 isLeft/isRight 相反，需反向映射
+        if (event.getPacketType() == PacketType.Play.Client.STEER_VEHICLE) {
+            WrapperPlayClientSteerVehicle input = new WrapperPlayClientSteerVehicle(event);
+            float sideways = input.getSideways();
+            onDirection.accept(sideways > INPUT_DEAD_ZONE ? -1 : sideways < -INPUT_DEAD_ZONE ? 1 : 0);
+            if (onForward != null) {
+                onForward.accept(input.getForward() > INPUT_DEAD_ZONE);
+            }
         }
     }
 }

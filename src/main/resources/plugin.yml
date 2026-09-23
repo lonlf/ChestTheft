@@ -1,9 +1,10 @@
 name: ChestTheft
-version: '2.0'
+version: '2.0.1'
 main: com.lonleaf.chesttheft.ChestTheft
 api-version: '1.19'
 authors: [ lonleaf ]
-softdepend: [ MythicMobs, PlaceholderAPI, packetevents, ItemsAdder, MMOItems, Nexo, Oraxen, CraftEngine, NeigeItems, LWC, Bolt, Residence, Dominion, GriefDefender, Towny, WorldGuard, NoBuildPlus]
+depend: [ packetevents ]
+softdepend: [ MythicMobs, PlaceholderAPI, ItemsAdder, MMOItems, Nexo, Oraxen, CraftEngine, NeigeItems, LWC, Bolt, Residence, Dominion, GriefDefender, Towny, WorldGuard, NoBuildPlus]
 description: This is a chest theft and lock picking plugin for Minecraft (Spigot).
 website: https://github.com/lonlf
 commands:
@@ -14,11 +15,11 @@ permissions:
   chesttheft.admin:
     default: op
   chesttheft.protectionOwner:
-    description: Treat the holder as the owner of any protected chest (overrides owner checks)
+    description: Treat the holder as the owner of any protected chest (admin-only; requires chesttheft.admin too, enables auto-unlocking any protected chest's lock)
     default: op
   chesttheft.check:
     description: View held item information (/ct check)
-    default: false
+    default: op
   chesttheft.use:
     description: allow to pickup
     default: true

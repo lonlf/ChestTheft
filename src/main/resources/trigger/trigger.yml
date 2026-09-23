@@ -1,4 +1,6 @@
 # 触发器配置：以 id 作为主键，type 指定触发类型，actions 为触发动作组
+# Trigger config: keyed by id; type sets the trigger type and actions is the action group
+
 # 触发类型（type）:
 #   success     撬锁成功
 #   fail        撬锁失败
@@ -7,11 +9,27 @@
 #   lock        上锁
 #   key-open    用钥匙开锁
 #   key-pair    配对钥匙
+# Trigger types (type):
+#   success     pick succeeded
+#   fail        pick failed
+#   cancel      picking cancelled (sneak)
+#   interrupted picking interrupted (damage / moved out of range)
+#   lock        locked
+#   key-open    opened with a key
+#   key-pair    key paired
+
 # 动作格式参照 CustomFishing（actions 下每个动作以动作 id 为键）:
 #   type   动作类型
 #   value  动作参数
 #   chance 触发概率（0~1，可选，默认 1）
+# Action format follows CustomFishing (each action under actions is keyed by an action id):
+#   type   action type
+#   value  action value
+#   chance trigger chance (0~1, optional, default 1)
+
 # 可用占位符: {player} {world} {x} {y} {z}
+# Available placeholders: {player} {world} {x} {y} {z}
+
 # 动作类型:
 #   消息:   message / random-message / broadcast
 #   命令:   command / player-command / random-command
@@ -20,8 +38,19 @@
 #   属性:   exp / level / food / saturation / potion-effect
 #   物品:   give-item（value 含 item 材质 / amount 数量 / to-inventory 是否入包）
 #   组合:   chain / delay（value 含 delay tick 与 actions 动作组）
+# Action types:
+#   Messages: message / random-message / broadcast
+#   Commands: command / player-command / random-command
+#   HUD: actionbar / random-actionbar / title / random-title / close-inv
+#   Sound: sound
+#   Stats: exp / level / food / saturation / potion-effect
+#   Items: give-item (value holds item material / amount / to-inventory)
+#   Chains: chain / delay (value holds delay ticks and an actions group)
+
 # 注意：撬锁中断提示已由插件内置发送（messages.pickInterrupted），
 # 无需在 interrupted 触发器里再配 message 动作，否则会与内置提示重复发送。
+# Note: the picking-interrupted message is already sent by the plugin (messages.pickInterrupted),
+# so do not add a message action to interrupted triggers, or it duplicates the built-in message.
 example_interrupted:
   type: interrupted
   actions:
@@ -34,6 +63,8 @@ example_interrupted:
 
 # 注意：撬锁成功提示已由插件内置发送（messages.success），
 # 无需在 success 触发器里再配 message 动作，否则会重复提示。
+# Note: the pick-success message is already sent by the plugin (messages.success),
+# so do not add a message action to success triggers, or it is sent twice.
 example_success:
   type: success
   actions:

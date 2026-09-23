@@ -15,8 +15,11 @@ public class MySQLDatabase extends AbstractDatabase {
     public MySQLDatabase(String ip, String port, String database, String user, String password,
                          boolean useSSL, String timeZone, Logger logger, boolean debug) {
         super(logger, debug);
+        // serverTimezone 可能含 '+'（如 GMT+8）：URL query 中 '+' 会被解码为空格导致驱动取错时区，
+        // 拼 URL 前编码为 %2B（时区串本身无空格，replace 即可，无需完整 URL 编码）
         String url = "jdbc:mysql://" + ip + ":" + port + "/" + database
-                + "?useSSL=" + useSSL + "&serverTimezone=" + timeZone + "&characterEncoding=utf8"
+                + "?useSSL=" + useSSL + "&serverTimezone=" + timeZone.replace("+", "%2B")
+                + "&characterEncoding=utf8"
                 + "&connectTimeout=5000&socketTimeout=30000";
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");

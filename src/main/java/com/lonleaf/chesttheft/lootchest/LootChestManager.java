@@ -11,6 +11,7 @@ import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Container;
@@ -18,12 +19,15 @@ import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -32,7 +36,16 @@ public class LootChestManager {
     private final ChestTheft plugin;
     private final PluginConfig config;
     private final LootChestConfigManager configManager;
+    /** 存在标记（识别本插件的战利品箱方块）。 */
     private final NamespacedKey blockKey;
+    /** 元数据键：档案 id / 有效撬锁等级 / 创建时间 / 是否已开启 / 首次开启时间。 */
+    private final NamespacedKey profileKey;
+    private final NamespacedKey levelKey;
+    private final NamespacedKey createdKey;
+    private final NamespacedKey lootedKey;
+    private final NamespacedKey lootedAtKey;
+    /** 已告警过的失效档案 id（避免区块重载时反复刷日志）。 */
+    private final Set<String> missingProfilesReported = new HashSet<>();
 
     /** 全部活动箱子：箱子 UUID → 箱子。 */
     private final Map<UUID, LootChest> activeChests = new ConcurrentHashMap<>();
@@ -50,6 +63,11 @@ public class LootChestManager {
         this.config = config;
         this.configManager = configManager;
         this.blockKey = new NamespacedKey(plugin, "loot_block");
+        this.profileKey = new NamespacedKey(plugin, "loot_profile");
+        this.levelKey = new NamespacedKey(plugin, "loot_level");
+        this.createdKey = new NamespacedKey(plugin, "loot_created");
+        this.lootedKey = new NamespacedKey(plugin, "loot_looted");
+        this.lootedAtKey = new NamespacedKey(plugin, "loot_looted_at");
         startExpireTask();
     }
 
@@ -128,6 +146,7 @@ public class LootChestManager {
         LootChest chest = new LootChest(block.getLocation(), inventory, profile);
         chest.setChestBlock(block);
         registerChest(chest);
+        writeMetadata(chest);   // 元数据落盘：重启/区块重载后据此还原等级与过期计时
         return chest;
     }
 
@@ -159,12 +178,19 @@ public class LootChestManager {
         }
     }
 
-    /** 把物品依次放入物品栏，放不下的丢弃（display 模式容量按物品数动态计算，通常不会触发）。 */
+    /** 把物品依次放入物品栏：容量不足时剩余物品自然掉落（block 模式容器有位置）；
+     *  虚拟物品栏（display 模式）无位置时记录日志，避免静默丢失。 */
     private void fillInventory(Inventory inventory, List<ItemStack> items) {
         int index = 0;
         for (ItemStack item : items) {
             if (index >= inventory.getSize()) {
-                break;
+                Location location = inventory.getLocation();
+                if (location != null && location.getWorld() != null) {
+                    location.getWorld().dropItemNaturally(location, item);
+                } else {
+                    plugin.getLogger().warning(Messages.getLog(Messages.LOG_LOOT_CHEST_FULL_NO_DROP, item.getType()));
+                }
+                continue;
             }
             inventory.setItem(index++, item);
         }
@@ -186,6 +212,11 @@ public class LootChestManager {
     public LootChest findByInventory(Inventory inventory) {
         UUID uuid = inventoryOwners.get(inventory);
         return uuid != null ? activeChests.get(uuid) : null;
+    }
+
+    /** 箱子是否仍在活动注册表中（主线程二次校验用；收包与执行之间存在移除窗口）。 */
+    public boolean isActive(LootChest chest) {
+        return chest != null && activeChests.containsKey(chest.getUuid());
     }
 
     /** 移除箱子：关闭查看者、清空物品栏、移除纯客户端展示实体/真实方块并播放粒子。 */
@@ -214,7 +245,8 @@ public class LootChestManager {
 
     /**
      * 区块加载同步：display 模式纯客户端实体重启后不保留，无需同步；
-     * block 模式根据方块 PDC 恢复容器物品栏箱子（真实方块随区块保存）。
+     * block 模式根据方块 PDC 恢复容器物品栏箱子（真实方块随区块保存），
+     * 档案/等级/创建时间/已开状态一并从 PDC 还原，避免重启后撬锁门槛被绕过。
      */
     public void syncFromChunk(Chunk chunk) {
         for (BlockState state : chunk.getTileEntities()) {
@@ -226,9 +258,87 @@ public class LootChestManager {
             if (blockOwners.containsKey(loc)) {
                 continue;
             }
-            LootChest chest = new LootChest(state.getLocation(), container.getInventory(), null);
-            chest.setChestBlock(state.getBlock());
-            registerChest(chest);
+            registerChest(restoreChest(state.getBlock(), container));
+        }
+    }
+
+    /**
+     * 启用时补扫全部已加载区块：重启后出生点等区块已加载，不会触发 ChunkLoadEvent，
+     * 若不补扫则这些箱子不受破坏保护、不参与过期清理，且撬锁门槛会丢失。
+     */
+    public void scanLoadedChunks() {
+        if (config.getLootChestDisplayType() != PluginConfig.LootChestDisplayType.BLOCK) {
+            return;
+        }
+        int found = 0;
+        for (World world : Bukkit.getWorlds()) {
+            for (Chunk chunk : world.getLoadedChunks()) {
+                int before = activeChests.size();
+                syncFromChunk(chunk);
+                found += activeChests.size() - before;
+            }
+        }
+        if (found > 0) {
+            plugin.getLogger().info("[ChestTheft] Restored " + found + " loot chest(s) from loaded chunks");
+        }
+    }
+
+    /** 按方块 PDC 还原箱子：档案存在时以档案为准，档案缺失时用持久化等级守住撬锁门槛。 */
+    private LootChest restoreChest(Block block, Container container) {
+        PersistentDataContainer pdc = container.getPersistentDataContainer();
+        String profileId = pdc.get(profileKey, PersistentDataType.STRING);
+        LootChestProfile profile = profileId == null || profileId.isEmpty()
+                ? null : configManager.getProfileById(profileId);
+        if (profileId != null && !profileId.isEmpty() && profile == null) {
+            warnMissingProfileOnce(profileId);
+        }
+        LootChest chest = new LootChest(block.getLocation(), container.getInventory(), profile,
+                pdc.getOrDefault(levelKey, PersistentDataType.INTEGER, -1),
+                pdc.getOrDefault(createdKey, PersistentDataType.LONG, System.currentTimeMillis()),
+                pdc.getOrDefault(lootedKey, PersistentDataType.BYTE, (byte) 0) == 1,
+                pdc.getOrDefault(lootedAtKey, PersistentDataType.LONG, 0L));
+        chest.setChestBlock(block);
+        return chest;
+    }
+
+    /** 把箱子元数据写入方块 PDC（block 模式；display 模式无真实方块，跳过）。 */
+    private void writeMetadata(LootChest chest) {
+        Block block = chest.getChestBlock();
+        if (block == null) {
+            return;
+        }
+        BlockState state = block.getState();
+        if (!(state instanceof Container container)) {
+            return;
+        }
+        PersistentDataContainer pdc = container.getPersistentDataContainer();
+        LootChestProfile profile = chest.getProfile();
+        if (profile != null) {
+            pdc.set(profileKey, PersistentDataType.STRING, profile.getId());
+        } else {
+            pdc.remove(profileKey);
+        }
+        pdc.set(levelKey, PersistentDataType.INTEGER, chest.getEffectiveLevel());
+        pdc.set(createdKey, PersistentDataType.LONG, chest.getCreated());
+        pdc.set(lootedKey, PersistentDataType.BYTE, (byte) (chest.isLooted() ? 1 : 0));
+        pdc.set(lootedAtKey, PersistentDataType.LONG, chest.getLootedAt());
+        container.update();   // 必须 update 才会写回方块数据
+    }
+
+    /** 标记已开启并回写持久化状态：重启后仍按 expire-time-opened 计过期。 */
+    public void markLooted(LootChest chest) {
+        if (chest == null) {
+            return;
+        }
+        chest.markLooted();
+        writeMetadata(chest);
+    }
+
+    /** 一次性告警：方块记录的档案已被删除或改名（箱子按 PDC 中的等级继续要求撬锁）。 */
+    private void warnMissingProfileOnce(String profileId) {
+        if (missingProfilesReported.add(profileId)) {
+            plugin.getLogger().warning("[ChestTheft] Loot chest profile '" + profileId
+                    + "' no longer exists; affected chests keep their persisted picklock level");
         }
     }
 

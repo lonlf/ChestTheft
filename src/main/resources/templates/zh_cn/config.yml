@@ -2,14 +2,8 @@
 config-version: 1
 # 是否输出调试日志
 debug: false
-# 保护插件集成设置（与各类保护插件交互）
-protection:
-  # 受保护插件保护的箱子是否启用本插件撬锁功能
-  # false（默认）：不可对受保护箱子上锁，若箱子已有锁则在保护所有者交互时自动卸锁并返还锁物品
-  # true：其他玩家可以通过撬锁打开受保护的箱子
-  picking-enabled: false
 # 语言设置: zh_cn / en_gb
-language: "en_gb"
+language: "zh_cn"
 # 数据库设置
 database:
   type: sqlite # sqlite / mysql
@@ -20,8 +14,21 @@ database:
   user: root
   password: 123456
   usessl: false
-  timezone: UTC
-
+  # 锁索引：启动时全量载入内存（读取不再查库，数据库抖动不会让锁失效）
+  abort-on-lock-load-error: true # 载入失败时中止启用；false 则降级为"全部视为已上锁"
+  read-through-locks: false      # 多台服务器共享同一数据库时开启，定时刷新锁索引
+  lock-refresh-seconds: 30       # 刷新周期（秒），read-through-locks 开启时生效
+  timezone: UTC  # MySQL serverTimezone：含 '+' 的写法需编码为 %2B（如 GMT+8 写作 GMT%2B8），或直接使用 Asia/Shanghai
+# 保护插件集成设置（与各类保护插件交互）
+protection:
+  # 受保护插件保护的箱子是否启用本插件撬锁功能
+  # false（默认）：不可对受保护箱子上锁，若箱子已有锁则在保护所有者交互时自动卸锁并返还锁物品
+  # true：其他玩家可以通过撬锁打开受保护的箱子
+  picking-enabled: false
+  # Dominion 领地插件异步授权同步等待超时（秒）
+  # Dominion 无同步 addMember/setMemberFlag API，事件内授权需阻塞主线程等待 DB 写库生效（默认 1 秒）
+  # 0：不阻塞等待，授权立即超时放弃并回滚（玩家本次打开被拦截，下次重试），可消除主线程卡顿
+  dominion-sync-timeout: 1.0
 # 撬锁小游戏参数
 game:
   # 小游戏类型（决定玩法）：moving-bar = 移动游标停在未完成判定区；扩展玩法由插件注册后在 game-type 指定
@@ -30,7 +37,7 @@ game:
   timeout: 15        # 超时时间（秒）
   cooldown: 3        # 撬锁结束后的冷却时间（秒）
   access-duration: 60  # 撬锁成功后玩家可自由打开该箱子的时长（秒）；0 表示不启用限时授权，改为仅一次打开机会
-  access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时，撬锁成功后需在此窗口内使用这一次打开机会
+  access-once-window: 60  # 一次性打开机会的有效窗口（秒）：access-duration 为 0 时，撬锁成功后需在此窗口内使用这一次打开机会；0 = 不限时（仍仅限一次机会，首次打开后重新上锁）
   interrupt-damage: true    # 撬锁过程中受到伤害时是否中断撬锁
   interrupt-move-range: 3.0  # 撬锁过程中移动超过该范围（方块）时中断撬锁；0 或负值表示不限制移动
   oscillate: true   # 游标是否自动往复移动；false 时改为骑乘模式（玩家进入骑乘状态），按 A/D 键控制游标左右移动
@@ -56,7 +63,7 @@ game:
   # 说明：move-interval（A/D 调 A 步进）与 render-mode 与上方公共参数共用同一键，等级配置中按需显式指定
   #       tumbler 的 move-interval 代码默认 6（上方公共默认 10 用于 moving-bar/rhythm-bar）
   # --- 音效配置（key: 音效名，支持 "minecraft:命名空间路径" 或 Bukkit 短名如 "note.pling"；
-  #      source: 声音类别 master/music/record/weather/block/hostile/neutral/player/ambient/voice；
+  #      source: 声音类别 master/music/record/weather/block/hostile/neutral/players/ambient/voice；
   #      volume 音量、pitch 音调；key 留空或删除节点即关闭对应音效；等级配置可覆盖单个节点） ---
   sounds:
     # 撬锁成功 / 失败（所有玩法通用）
@@ -101,14 +108,6 @@ game:
       volume: 0.7
       pitch: 1.0
 
-# 上锁方块类型设置（仅允许对以下方块类型上锁，破坏/爆炸清理与卸锁目标判定同此列表）
-lock:
-  # 允许上锁的方块类型列表；非法项启动时记日志跳过，列表为空时回退默认（箱子和陷阱箱）
-  lockable-blocks:
-    - CHEST
-    - TRAPPED_CHEST
-    - acacia_door
-
 # 钥匙功能
 key:
   # 是否启用钥匙卸锁功能（已配对钥匙 + 交互按键，卸下锁并返还锁物品；卸锁必须手持钥匙）
@@ -117,6 +116,8 @@ key:
   unlock-by-holder: false
   # 是否启用钥匙配对功能（未配对钥匙 + 交互按键，由上锁者为钥匙配对）
   pair-enabled: true
+  # 是否允许已配对的钥匙重新配对到另一把锁（交互按键 + 两次交互确认；false 时已配对钥匙不可再配对）
+  repair-enabled: false
   # 交互按键动作: LEFT / RIGHT
   interaction-action: LEFT
   # 交互按键是否必须潜行
@@ -144,6 +145,8 @@ lootchest:
   display-type: display
   # 玩家未拿完战利品时是否保留箱子（保留则之后可再次打开；取空后自动消失，默认开启）
   keep: true
+  # keep 为 false 时，未取完的剩余物品是否掉落到箱子位置（默认 false：箱子消失时直接销毁）
+  drop-remaining: false
   # 箱子未被开启的过期时间（秒）；0 表示不过期
   expire-time: 600
   # 箱子被开启后的过期时间（秒）；0 表示不过期
@@ -153,6 +156,65 @@ lootchest:
   # 不生成战利品箱的世界名列表
   worlds:
     exclude: []
+
+# 合成配方设置
+recipe:
+  # 已配对钥匙可直接合成为未配对钥匙（配方：1 个已配对钥匙 → 1 个未配对钥匙）
+  # true：开启该合成配方；false：关闭（已配对钥匙不可在合成台复原为未配对）
+  key-crafting-unpair-enabled: true
+
+# 上锁方块类型设置（仅允许对以下方块类型上锁，破坏/爆炸清理与卸锁目标判定同此列表）
+lock:
+  # 锁被撬开后，所有者关闭箱子时是否立即重新上锁（撤销全局解锁，防止他人继续打开）
+  # true：所有者打开被撬开的箱子并关闭后立即重新上锁；false：保持原有解锁窗口（限时/一次性）
+  owner-close-relock: true
+  # 漏斗守卫：拦截以已锁定容器为来源/目标的物品搬运（防止漏斗抽干锁箱）
+  hopper-guard:
+    extract: true # 拦截抽取（锁箱 → 漏斗/矿车）
+    insert: true  # 拦截送入（漏斗 → 锁箱）
+  # 允许上锁的方块类型列表；非法项启动时记日志跳过，列表为空时回退默认（箱子和陷阱箱）
+  lockable-blocks:
+    #箱子类容器
+    - CHEST
+    - TRAPPED_CHEST
+    - ENDER_CHEST
+    - BARREL
+    - SHULKER_BOX
+    - WHITE_SHULKER_BOX
+    - ORANGE_SHULKER_BOX
+    # ... 其他颜色的潜影盒
+    #门
+    - acacia_door
+    - BIRCH_DOOR
+    - CRIMSON_DOOR
+    - DARK_OAK_DOOR
+    - IRON_DOOR
+    - JUNGLE_DOOR
+    - MANGROVE_DOOR
+    - OAK_DOOR
+    - SPRUCE_DOOR
+    - WARPED_DOOR
+    #活板门
+    - ACACIA_TRAPDOOR
+    - BIRCH_TRAPDOOR
+    - CRIMSON_TRAPDOOR
+    - DARK_OAK_TRAPDOOR
+    - IRON_TRAPDOOR
+    - JUNGLE_TRAPDOOR
+    - MANGROVE_TRAPDOOR
+    - OAK_TRAPDOOR
+    - SPRUCE_TRAPDOOR
+    - WARPED_TRAPDOOR
+    #栅栏门
+    - ACACIA_FENCE_GATE
+    - BIRCH_FENCE_GATE
+    - CRIMSON_FENCE_GATE
+    - DARK_OAK_FENCE_GATE
+    - JUNGLE_FENCE_GATE
+    - MANGROVE_FENCE_GATE
+    - OAK_FENCE_GATE
+    - SPRUCE_FENCE_GATE
+    - WARPED_FENCE_GATE
 
 # 各交互消息显示方式: message（聊天）/ actionbar（动作栏）/ title（标题）
 message-format:
@@ -167,10 +229,16 @@ message-format:
   lockSuccess: title        # 上锁成功
   blockLocked: actionbar      # 方块已上锁
   lockNotLockable: message  # 方块不可上锁
+  lockFailed: message       # 上锁失败（写入异常/位置已被占用时的兜底提示）
+  reloadFailed: message     # 配置重载失败
+  keyOnUnlocked: message    # 手持钥匙左键点击未上锁方块时的指引
+  givenItemDropped: message # 背包满时物品掉落的提示
   unlockSuccess: message    # 卸锁成功
   unlockConfirm: actionbar    # 卸锁确认
   pairSuccess: message      # 配对成功
   pairNotLocker: message    # 无法配对
+  repairConfirm: actionbar    # 重新配对确认
+  repairSuccess: message      # 重新配对成功
   keyNotMatched: actionbar    # 钥匙不匹配
   keyChanged: actionbar       # 钥匙已更换
   chestProtected: message    # 受保护箱子已卸锁
@@ -182,6 +250,7 @@ message-format:
   invalidId: message        # 无效物品ID
   invalidAmount: message    # 无效数量
   giveSuccess: message      # 给予物品
+  giveDropped: message      # 给予物品（背包已满掉落到脚下）
   setItemSuccess: message   # 设置物品成功
   setItemNoItem: message    # 未手持物品
   checkNotSpecial: message  # 非特殊物品
@@ -211,17 +280,17 @@ font:
     '-32': e006
     '-64': e007
     '-128': e008
-  # 位图字符码位（十六进制）：普通格 bar_cell.png（8px/切片）+ 边框格 bar_edge.png（10px/切片，多 1px 边框像素）
+  #  位图字符码位（十六进制）：普通格 bar_cell.png（8px/切片）+ 边框格 bar_edge.png（22px/2 字符 = 11px/切片）
   bar-chars:
     base: e100      # 底格（进度条背景，8px）
     unhit: e101     # 未完成格（红色，判定点未命中，8px）
     cursor: e102    # 游标格（黄色，当前游标，8px）
     blank: e103     # 空白格（全透明占位，8px）
     done: e106      # 完成格（绿色，判定点已命中，8px）
-    left: e104      # 左端边框格（9px，条最左色块）
-    right: e105     # 右端边框格（9px，条最右色块）
+    left: e104      # 左端边框格（11px，条最左色块）
+    right: e105     # 右端边框格（11px，条最右色块）
   # 机关转轮玩法（tumbler-bar）状态码位：背景块 / A 普通态 / A 特殊态（尝试失败时显示）/ B 状态
-  # 新增状态：在下方对应小节追加数字键即可（如 a 加 4: e128），同时修改 lock.yml 对应等级的状态数，无需改代码
+  # 新增状态：在下方对应小节追加数字键即可（如 a 加 4: e128），同时修改 locklevel.yml 对应等级的状态数，无需改代码
   tumbler-chars:
     background: e140  # 背景整图（96x96，单字符，无拼接缝隙；A/B 图标在其上定位；多块用逗号分隔）
     a:
@@ -250,10 +319,10 @@ font:
     cell-slice-width: 8    # bar_cell 每字符切片宽度（像素）
     cell-height: 8         # bar.json 中 bar_cell provider 的 height（渲染高度，像素）
     edge-png-height: 8     # bar_edge.png 高度（像素）
-    edge-slice-width: 9    # bar_edge 每字符切片宽度（像素，比普通格宽 1px 形成边框）
+    edge-slice-width: 11   # bar_edge 每字符切片宽度（像素，= PNG 宽 ÷ 字符数 = 22 ÷ 2）
     edge-height: 8         # bar.json 中 bar_edge provider 的 height（渲染高度，像素）
     glyph-gap: 1           # 客户端每字形后固定间隙（像素）
-    edge-overlay-outset: 1 # 游标到达端点时，边框格外侧露出的边框像素（边框切片比游标宽时，如边框 15px/游标 8px 设 3）
+    edge-overlay-outset: 3 # 端点游标重叠时边框外侧露出的像素（默认包边框 11px/游标 8px：游标自外缘 3px 起盖满剩余 8px 主体；须 ≤ 边框宽 − 游标宽）
     tumbler-tile: 48       # 机关转轮（tumbler-bar）背景格/A/B 图标尺寸（像素，48x48 方块；须与资源包 tumbler_bg/tumbler_a/tumbler_a_special/tumbler_b 一致）
     tumbler-png-height: 96 # tumbler 相关 PNG 高度（像素，须与资源包 PNG 高度一致）
     tumbler-height: 96     # bar.json 中 tumbler provider 的 height（渲染高度，像素）

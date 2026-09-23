@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class GiveCommand implements Command {
@@ -57,7 +58,17 @@ public class GiveCommand implements Command {
         if (item == null) {
             return true;
         }
-        target.getInventory().addItem(item);
+        Map<Integer, ItemStack> leftover = target.getInventory().addItem(item);
+        if (!leftover.isEmpty()) {
+            // 背包已满：未放入部分直接掉落在目标脚下，并提示掉落数量（避免物品凭空消失）
+            for (ItemStack drop : leftover.values()) {
+                target.getWorld().dropItemNaturally(target.getLocation(), drop);
+            }
+            int dropped = leftover.values().stream().mapToInt(ItemStack::getAmount).sum();
+            Messages.send(sender, Messages.GIVEN_ITEM_DROPPED, Messages.GIVEN_ITEM_DROPPED_FORMAT,
+                    dropped, def.getId(), target.getName());
+            return true;
+        }
         Messages.send(sender, Messages.GIVEN_ITEM, Messages.GIVEN_ITEM_FORMAT, amount, def.getId(), target.getName());
         return true;
     }

@@ -8,6 +8,7 @@ import com.lonleaf.chesttheft.lootchest.LootChestManager;
 import com.lonleaf.chesttheft.message.BitmapCalculator;
 import com.lonleaf.chesttheft.message.OffsetChars;
 import com.lonleaf.chesttheft.minigame.GameManager;
+import com.lonleaf.chesttheft.recipe.RecipeManager;
 import com.lonleaf.chesttheft.trigger.TriggerManager;
 import org.bukkit.command.CommandSender;
 
@@ -20,16 +21,19 @@ public class ReloadCommand implements Command {
     private final LockConfigManager lockConfigManager;
     private final TriggerManager triggerManager;
     private final LootChestManager lootChestManager;
+    private final RecipeManager recipeManager;
 
     public ReloadCommand(PluginConfig config, ItemConfigManager itemConfigManager,
                          GameManager gameManager, LockConfigManager lockConfigManager,
-                         TriggerManager triggerManager, LootChestManager lootChestManager) {
+                         TriggerManager triggerManager, LootChestManager lootChestManager,
+                         RecipeManager recipeManager) {
         this.config = config;
         this.itemConfigManager = itemConfigManager;
         this.gameManager = gameManager;
         this.lockConfigManager = lockConfigManager;
         this.triggerManager = triggerManager;
         this.lootChestManager = lootChestManager;
+        this.recipeManager = recipeManager;
     }
 
     @Override
@@ -42,12 +46,18 @@ public class ReloadCommand implements Command {
             return true;
         }
 
-        config.reload();
+        if (!config.reload()) {
+            // 配置加载失败：不重载其它管理器、不报成功，避免"半新半旧"状态被当成成功
+            Messages.send(sender, Messages.RELOAD_FAILED, Messages.RELOAD_FAILED_FORMAT);
+            return true;
+        }
         // 位图渲染工具持有 FontConfig 静态引用，仅在启动时注入；reload 后必须重新注入新配置，
         // 否则 font.bitmap（tumbler-ascent 等）与 tumbler-chars 的修改不生效
         OffsetChars.init(config.getFontConfig());
         BitmapCalculator.init(config.getFontConfig());
         itemConfigManager.reload();
+        // 物品定义可能已变化，重建拆解配方材料集合
+        recipeManager.reloadRecipes();
         gameManager.updateConfig(config.getGameConfig());
         // 必须先更新默认配置再加载等级配置：load() 内 mergeWithDefault 使用 defaultConfig 填充未定义键
         lockConfigManager.updateDefaultConfig(config.getGameConfig());

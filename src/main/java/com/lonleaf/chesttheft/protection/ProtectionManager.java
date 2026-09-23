@@ -1,6 +1,7 @@
 package com.lonleaf.chesttheft.protection;
 
 import com.lonleaf.chesttheft.config.Messages;
+import com.lonleaf.chesttheft.database.UnlockResult;
 import com.lonleaf.chesttheft.config.PluginConfig;
 import com.lonleaf.chesttheft.database.Database;
 import com.lonleaf.chesttheft.event.ChestInteractEvent;
@@ -23,14 +24,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.logging.Level;
 
 /**
- * 外部保护兼容统一入口：装配各保护插件适配器，对受保护情况下的撬锁流程统一调度——
- * 交互判定（{@link #decideInteract}）、上锁判定（{@link #decideLock}）、
- * 打开容器事件内临时授权（ChestOpenEvent 统一分发到各适配器，打开动作完成后下一 tick 统一收回）。
- * 不同情况（是否启用撬锁、是否保护所有者、是否无所有者保护等）在此做出对应决策。
- * 授权不持久化：事件内瞬时生效，收回后窗口仅一次事件处理时长；持久化型保护授权前落库
- * （记录原状态），崩溃后启动清理恢复残留，附件型保护不落库（重启内存重置即清）。
+ * 外部保护兼容统一入口：装配各保护插件适配器，统一调度受保护情况下的交互/上锁判定
+ * 与打开容器的事件内临时授权（各适配器分发后，打开动作完成下一 tick 统一收回）。
+ * 授权不持久化：事件内瞬时生效；持久化型保护授权前落库，崩溃后启动清理恢复，附件型不落库。
  */
 public class ProtectionManager implements Listener {
 
@@ -95,11 +96,15 @@ public class ProtectionManager implements Listener {
 
     // ==================== 检测统一入口 ====================
 
-    /** 方块是否受任一已装配保护插件保护。 */
+    /** 方块是否受任一已装配保护插件保护（单个适配器查询失败只跳过它自己）。 */
     public boolean isProtected(Block block) {
         for (ProtectionAdapter adapter : adapters) {
-            if (adapter.isProtected(block)) {
-                return true;
+            try {
+                if (adapter.isProtected(block)) {
+                    return true;
+                }
+            } catch (LinkageError | Exception e) {
+                logAdapterOpFailure(adapter.pluginType(), "isProtected", e);
             }
         }
         return false;
@@ -108,9 +113,13 @@ public class ProtectionManager implements Listener {
     /** 获取保护所有者 UUID（按适配器装配顺序取第一个非空；无保护或无所有者概念返回 null）。 */
     public UUID getOwnerUUID(Block block) {
         for (ProtectionAdapter adapter : adapters) {
-            UUID owner = adapter.getOwnerUUID(block);
-            if (owner != null) {
-                return owner;
+            try {
+                UUID owner = adapter.getOwnerUUID(block);
+                if (owner != null) {
+                    return owner;
+                }
+            } catch (LinkageError | Exception e) {
+                logAdapterOpFailure(adapter.pluginType(), "getOwnerUUID", e);
             }
         }
         return null;
@@ -124,9 +133,10 @@ public class ProtectionManager implements Listener {
         return isProtected(block) && getOwnerUUID(block) == null;
     }
 
-    /** 玩家是否为保护所有者（拥有 chesttheft.protectionOwner 权限者一律视为所有者）。 */
+    /** 玩家是否为保护所有者（需同时具备管理员权限与 protectionOwner 权限，避免误授普通玩家后
+     *  可系统性解除任意受保护箱子的本插件锁；普通所有者按保护所有者 UUID 判定）。 */
     public boolean isOwner(Block block, Player player) {
-        if (player.hasPermission("chesttheft.protectionOwner")) {
+        if (player.hasPermission("chesttheft.admin") && player.hasPermission("chesttheft.protectionOwner")) {
             return true;
         }
         UUID owner = getOwnerUUID(block);
@@ -142,7 +152,7 @@ public class ProtectionManager implements Listener {
         switch (decision.getType()) {
             case TAKEOVER_UNLOCK -> {
                 event.setCancelled(true);
-                unlockAndReturn(event.getBlock());
+                unlockAndReturn(event.getBlock(), event.getPlayer());
                 decision.sendTo(event.getPlayer());
             }
             case DENY -> {
@@ -177,22 +187,24 @@ public class ProtectionManager implements Listener {
         if (block == null) {
             return;
         }
-        grantOpenAccess(player, block);
-        scheduleRevoke(player, block);
+        // 授权阶段即使抛异常也必须排入收回，否则已授权方会残留到会话结束
+        try {
+            grantOpenAccess(player, block);
+        } finally {
+            scheduleRevoke(player, block);
+        }
     }
 
     /**
      * 收回调度：打开动作（含保护插件可能的 InventoryOpenEvent 检查）在当前 tick 内完成后，
-     * 下一 tick 统一收回各适配器的临时授权，窗口为零。
+     * 下一 tick 统一收回各适配器的临时授权，窗口为零。逐适配器隔离，单个失败不影响其余。
      */
     private void scheduleRevoke(Player player, Block block) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!plugin.isEnabled()) {
                 return; // 插件已禁用：适配器 cleanup 兜底撤销
             }
-            for (ProtectionAdapter adapter : adapters) {
-                adapter.revokeAccess(block, player);
-            }
+            forEachAdapter("revokeAccess", adapter -> adapter.revokeAccess(block, player));
         });
     }
 
@@ -205,46 +217,88 @@ public class ProtectionManager implements Listener {
         if (block == null) {
             return;
         }
+        forEachAdapter("grantOpenAccess", adapter -> adapter.grantOpenAccess(block, player));
+    }
+
+    /**
+     * 逐适配器执行操作并隔离异常：单个适配器失败只跳过它自己，后续适配器照常执行。
+     * 与 {@link #register()} 的隔离级别一致（catch LinkageError | Exception，不吞 OOM 等 Error）。
+     */
+    private void forEachAdapter(String operation, Consumer<ProtectionAdapter> action) {
         for (ProtectionAdapter adapter : adapters) {
-            adapter.grantOpenAccess(block, player);
+            try {
+                action.accept(adapter);
+            } catch (LinkageError | Exception e) {
+                logAdapterOpFailure(adapter.pluginType(), operation, e);
+            }
         }
     }
 
     // ==================== 装配与注销 ====================
 
     /**
-     * 注册：装配各保护插件适配器（仅对应插件存在时）并注册监听。
-     * 各适配器必须在对应保护插件存在时才创建：适配器签名引用插件类型（如 ResidenceCreationEvent），
-     * 类加载验证时会解析签名并加载缺失插件类，导致 NoClassDefFoundError。
+     * 装配并监听各保护适配器：必须先按插件名判断存在再实例化（适配器引用插件类型，
+     * 缺失时 new 会抛 NoClassDefFoundError 导致整个插件启用失败），构造/装配/清理逐个隔离。
      */
     public void register() {
-        registerIfActive(new BoltAdapter(plugin, config, database));
-        registerIfActive(new LwcAdapter(plugin, database));
-        registerIfActive(new ResidenceAdapter(plugin, database));
-        registerIfActive(new DominionAdapter(plugin, database));
-        registerIfActive(new GriefDefenderAdapter(plugin, database));
-        registerIfActive(new TownyAdapter(plugin, database));
-        registerIfActive(new WorldGuardAdapter(plugin, database));
-        registerIfActive(new NoBuildPlusAdapter(plugin));
+        registerAdapterIfPresent("Bolt", () -> new BoltAdapter(plugin, config, database));
+        registerAdapterIfPresent("LWC", () -> new LwcAdapter(plugin, database));
+        registerAdapterIfPresent("Residence", () -> new ResidenceAdapter(plugin, database));
+        registerAdapterIfPresent("Dominion", () -> new DominionAdapter(plugin, config, database));
+        registerAdapterIfPresent("GriefDefender", () -> new GriefDefenderAdapter(plugin, database));
+        registerAdapterIfPresent("Towny", () -> new TownyAdapter(plugin, database));
+        registerAdapterIfPresent("WorldGuard", () -> new WorldGuardAdapter(plugin, database));
+        registerAdapterIfPresent("NoBuildPlus", () -> new NoBuildPlusAdapter(plugin));
         Bukkit.getPluginManager().registerEvents(this, plugin);
         for (ProtectionAdapter adapter : adapters) {
-            adapter.register(this::handleProtectionCreated);
-            // 清理上次崩溃残留的临时授权（持久化型保护授权落库，崩溃后不会自动消失）
-            adapter.cleanupStale();
+            // 单个适配器异常只停用该兼容，不影响其它适配器与插件本体
+            try {
+                adapter.register(this::handleProtectionCreated);
+                // 清理上次崩溃残留的临时授权（持久化型保护授权落库，崩溃后不会自动消失）
+                adapter.cleanupStale();
+            } catch (LinkageError | Exception e) {
+                logAdapterFailure(adapter.pluginType(), e);
+            }
         }
     }
 
-    /** 对应插件已安装时才装配适配器。 */
-    private void registerIfActive(ProtectionAdapter adapter) {
+    /** 插件已安装时才创建并装配适配器；工厂延迟执行，插件缺失时适配器类不会被加载。 */
+    private void registerAdapterIfPresent(String pluginName, Supplier<ProtectionAdapter> factory) {
+        if (Bukkit.getPluginManager().getPlugin(pluginName) == null) {
+            return;
+        }
+        ProtectionAdapter adapter;
+        try {
+            adapter = factory.get();
+        } catch (LinkageError | Exception e) {
+            logAdapterFailure(pluginName, e);
+            return;
+        }
         if (adapter.isActive()) {
             adapters.add(adapter);
         }
     }
 
+    /** 记录某个保护适配器初始化失败：只停用该兼容，不抛出。 */
+    private void logAdapterFailure(String pluginName, Throwable error) {
+        plugin.getLogger().log(Level.WARNING, "[ChestTheft] Protection integration '" + pluginName
+                + "' failed to initialise; its compatibility features are disabled", error);
+    }
+
+    /** 记录某个适配器的运行期操作失败：只跳过该适配器本次操作，其余适配器与流程不受影响。 */
+    private void logAdapterOpFailure(String pluginName, String operation, Throwable error) {
+        plugin.getLogger().log(Level.WARNING, "[ChestTheft] Protection adapter '" + pluginName
+                + "' failed during '" + operation + "'; this operation was skipped", error);
+    }
+
     /** 注销监听（插件禁用时调用）：清理各适配器的临时授权并撤销订阅。 */
     public void unregister() {
         for (ProtectionAdapter adapter : adapters) {
-            adapter.unregister();
+            try {
+                adapter.unregister();
+            } catch (LinkageError | Exception e) {
+                logAdapterFailure(adapter.pluginType(), e);
+            }
         }
         adapters.clear();
     }
@@ -257,20 +311,28 @@ public class ProtectionManager implements Listener {
         if (!plugin.isEnabled() || block == null || config.isProtectionPickingEnabled() || !chestService.isLocked(block)) {
             return;
         }
-        unlockAndReturn(block);
+        unlockAndReturn(block, null);
         if (config.isDebug()) {
             plugin.getLogger().info(Messages.getLog(Messages.LOG_PROTECTION_AUTO_UNLOCK, BlockLocation.from(block)));
         }
     }
 
     /**
-     * 卸下锁并返还锁物品：先取上锁者（卸锁会删除数据库记录），再卸锁；
-     * 锁返还给在线的上锁者（直接入包，背包满则掉落），不在线时才掉落；
-     * 自动补默认锁 / PDC 标记，避免"假锁"或物品消失。
+     * 卸下锁并返还锁物品：先取上锁者（卸锁会删除数据库记录）再卸锁，返还给在线的上锁者
+     * （直接入包，背包满则掉落），不在线才掉落；自动补默认锁 / PDC 标记，避免"假锁"或物品消失。
+     * actor 为交互玩家（与上锁者相同时跳过通知，避免重复提示）；null 表示保护创建回调，总是通知上锁者。
      */
-    private void unlockAndReturn(Block block) {
+    private void unlockAndReturn(Block block, Player actor) {
         String lockerUuid = chestService.getLocker(block);
-        ItemStack lockItem = chestService.unlock(block);
+        UnlockResult unlockResult = chestService.unlock(block);
+        if (unlockResult.isError()) {
+            // 写库失败：记录仍在，绝不能补发锁物品
+            if (actor != null) {
+                Messages.send(actor, Messages.LOCK_FAILED, Messages.LOCK_FAILED_FORMAT);
+            }
+            return;
+        }
+        ItemStack lockItem = unlockResult.getItem();
         if (lockItem == null || lockItem.getType().isAir()) {
             // 数据库无锁物品数据（旧数据/反序列化失败）时补发默认锁，避免锁物品凭空消失
             lockItem = itemManager.createDefault(ItemType.LOCK, 1);
@@ -281,7 +343,10 @@ public class ProtectionManager implements Listener {
         if (lockItem != null) {
             giveLockItem(block, lockerUuid, lockItem);
         }
-        notifyLocker(lockerUuid);
+        // 上锁者与交互玩家相同时已由决策消息提示，不再重复发送
+        if (actor == null || lockerUuid == null || !lockerUuid.equals(actor.getUniqueId().toString())) {
+            notifyLocker(lockerUuid);
+        }
     }
 
     /**
