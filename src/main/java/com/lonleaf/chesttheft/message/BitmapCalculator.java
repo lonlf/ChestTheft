@@ -4,7 +4,7 @@ import com.lonleaf.chesttheft.config.FontConfig;
 
 /**
  * 位图渲染偏移计算：基于资源包参数计算每字形后应插入的间隙补偿偏移，使位图格子无缝贴合。
- * 补偿公式：advance(上取整) + glyph-gap - 渲染宽(下取整)，详见 docs/代码详细注释.md 模块E。
+ * 补偿公式：advance(上取整) + glyph-gap - 渲染宽(下取整)。
  */
 public final class BitmapCalculator {
 
@@ -32,7 +32,7 @@ public final class BitmapCalculator {
     }
 
     // ==================== 端点游标重叠（游标覆盖边框格主体、露出外侧边框像素） ====================
-    // 渲染几何见 docs/代码详细注释.md 模块E；leftOverlayBack/rightOverlayBack 计算回退量，
+    // leftOverlayBack/rightOverlayBack 计算回退量，
     // leftOverlayTail 计算游标后推进量使下一格起点对齐。
 
     /** 字形间隙（像素）。 */
