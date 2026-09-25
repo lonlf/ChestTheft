@@ -11,7 +11,7 @@ get out the lockpick and start a minigame.
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](#requirements)
 [![Version](https://img.shields.io/badge/version-2.0.1-green)](#)
 
-[Wiki](https://github.com/lonlf/ChestTheft/wiki/) · [Trigger reference](https://github.com/lonlf/ChestTheft/wiki/trigger-actions) · [Purchase](https://chesttheft.lonleaf.dev)
+[Wiki](https://github.com/lonlf/ChestTheft/wiki/) · [Trigger reference](https://github.com/lonlf/ChestTheft/wiki/Triggers) · [Purchase](https://chesttheft.lonleaf.dev)
 </div>
 
 ---
